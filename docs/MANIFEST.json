@@ -1,8 +1,0 @@
-{
-  "domainModel": ["PRDownloaderConfig", "DownloadRequest", "DownloadTask", "DownloadModel", "Response", "Error", "Progress"],
-  "behaviorsToImplement": ["queue/start/pause/resume/cancel downloads", "sync and async download execution", "HTTP connection and response handling", "temp file write + final rename", "progress callbacks", "database abstraction and cleanup"],
-  "modules": ["com.downloader", "com.downloader.core", "com.downloader.database", "com.downloader.handler", "com.downloader.httpclient", "com.downloader.internal", "com.downloader.internal.stream", "com.downloader.request", "com.downloader.utils"],
-  "fileTree": ["src/main/java/...", "src/test/java/...", "docs/ASSUMPTIONS.md", "docs/PROGRESS.md", "README.md"],
-  "testingPlan": ["unit test queue lifecycle", "unit test utility ID/path behavior", "integration-ish test synchronous download via embedded HttpServer", "progress callback validation"],
-  "assumptions": ["Android classes modeled with JVM shims", "in-memory DB used unless enabled", "bootRun task uses JavaExec"]
-}
