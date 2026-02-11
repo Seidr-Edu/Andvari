@@ -28,6 +28,15 @@ run_demo_with_optional_timeout() {
   fi
 }
 
+# --- Required docs/artifacts ---
+info "Checking required docs..."
+[[ -f README.md ]] || fail "Missing README.md"
+[[ -f docs/ASSUMPTIONS.md ]] || fail "Missing docs/ASSUMPTIONS.md"
+[[ -f docs/ARCHITECTURE.md ]] || fail "Missing docs/ARCHITECTURE.md"
+
+info "Checking README demo instructions..."
+rg -n "run_demo\\.sh" README.md >/dev/null 2>&1 || fail "README.md must document how to run ./run_demo.sh"
+
 # --- Java project + entrypoint sanity ---
 info "Checking Java source exists..."
 [[ -d src/main/java ]] || fail "Missing src/main/java"

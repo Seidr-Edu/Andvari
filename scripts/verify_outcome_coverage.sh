@@ -131,6 +131,10 @@ RESULTS_FILE="completion/proof/results.v${LATEST_GATE_VERSION}.json"
 mkdir -p completion/proof/logs
 REPLAY_LOG="completion/proof/logs/runner_replay.log"
 
+# Force proof regeneration on each replay so stale artifacts cannot be reused.
+rm -f "$RESULTS_FILE"
+find completion/proof/logs -mindepth 1 -maxdepth 1 -type f -name "*.log" -delete
+
 info "Replaying model gates via completion/run_all_gates.sh"
 set +e
 run_gate_with_optional_timeout "$REPLAY_LOG"
@@ -140,6 +144,7 @@ cat "$REPLAY_LOG"
 [[ "$REPLAY_STATUS" -eq 0 ]] || fail "completion/run_all_gates.sh failed with exit code ${REPLAY_STATUS}"
 
 [[ -f "$RESULTS_FILE" ]] || fail "Missing ${RESULTS_FILE}"
+[[ -s "$RESULTS_FILE" ]] || fail "Empty ${RESULTS_FILE}"
 
 perl - "$OUTCOMES_FILE" "$LATEST_GATE_FILE" "$RESULTS_FILE" "$ROOT" <<'PERL_EOF'
 use strict;
