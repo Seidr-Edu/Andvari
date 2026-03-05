@@ -134,6 +134,7 @@ or:
 ```
 
 All adapters must satisfy the shared contract documented in `scripts/adapters/ADAPTER_CONTRACT.md`.
+Shared phase prompts are centralized in `scripts/adapters/prompts.sh` to keep adapters DRY.
 
 ## Adapter checks
 

@@ -34,3 +34,5 @@ For an adapter id `<name>`:
 - Adapters should keep phase prompts and acceptance semantics aligned with the
   existing `codex` adapter unless provider limits require minimal adjustments.
 - Scope constraints and AGENTS policy precedence must be preserved in prompts.
+- Shared prompt templates live in `scripts/adapters/prompts.sh` and should be
+  reused across adapters to avoid drift.

@@ -4,6 +4,8 @@ set -euo pipefail
 ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=/dev/null
+source "${ADAPTER_DIR}/prompts.sh"
+# shellcheck source=/dev/null
 source "${ADAPTER_DIR}/codex.sh"
 # shellcheck source=/dev/null
 source "${ADAPTER_DIR}/claude.sh"
