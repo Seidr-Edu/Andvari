@@ -7,12 +7,13 @@ ADAPTER_LIB="${ROOT_DIR}/scripts/adapters/adapter.sh"
 usage() {
   cat <<'USAGE'
 Usage:
-  ./andvari-run.sh --diagram /path/to/diagram.puml [--run-id RUN_ID] [--max-iter N] [--gating-mode model|fixed] [--max-gate-revisions N] [--model-gate-timeout-sec N]
+  ./andvari-run.sh --diagram /path/to/diagram.puml [--run-id RUN_ID] [--max-iter N] [--adapter NAME] [--gating-mode model|fixed] [--max-gate-revisions N] [--model-gate-timeout-sec N]
 
 Options:
   --diagram                 Path to the PlantUML diagram (.puml). Required.
   --run-id                  Optional run id. Auto-generated (UTC timestamp) if omitted.
   --max-iter                Maximum repair iterations after first implementation attempt. Default: 8.
+  --adapter                 Adapter backend to use (default: ANDVARI_ADAPTER or codex).
   --gating-mode             Gating strategy: model (default) or fixed.
   --max-gate-revisions      In model mode, maximum revisions after gates.v1 (default: 3).
   --model-gate-timeout-sec  In model mode, timeout for completion/run_all_gates.sh replay (default: 120).
@@ -87,6 +88,11 @@ while [[ $# -gt 0 ]]; do
       MAX_ITER="$2"
       shift 2
       ;;
+    --adapter)
+      [[ $# -ge 2 ]] || fail "--adapter requires a value"
+      ADAPTER="$2"
+      shift 2
+      ;;
     --gating-mode)
       [[ $# -ge 2 ]] || fail "--gating-mode requires a value"
       GATING_MODE="$2"
@@ -135,6 +141,10 @@ case "$GATING_MODE" in
     ;;
 esac
 
+if ! adapter_is_supported "$ADAPTER"; then
+  fail "Unsupported adapter: ${ADAPTER}. Supported adapters: $(adapter_list)"
+fi
+
 if [[ "$GATING_MODE" == "model" ]]; then
   AGENTS_TEMPLATE_PATH="${ROOT_DIR}/AGENTS.model.md"
 else
@@ -168,8 +178,8 @@ cp "${ROOT_DIR}/gate_hard.sh" "${NEW_REPO_DIR}/gate_hard.sh"
 cp "${ROOT_DIR}/scripts/verify_outcome_coverage.sh" "${NEW_REPO_DIR}/scripts/verify_outcome_coverage.sh"
 chmod +x "${NEW_REPO_DIR}/gate_recon.sh" "${NEW_REPO_DIR}/gate_hard.sh" "${NEW_REPO_DIR}/scripts/verify_outcome_coverage.sh"
 
-EVENTS_LOG="${LOGS_DIR}/codex_events.jsonl"
-CODEX_STDERR_LOG="${LOGS_DIR}/codex_stderr.log"
+EVENTS_LOG="${LOGS_DIR}/adapter_events.jsonl"
+ADAPTER_STDERR_LOG="${LOGS_DIR}/adapter_stderr.log"
 GATE_LOG="${LOGS_DIR}/gate.log"
 LAST_FIXED_GATE_OUTPUT="${LOGS_DIR}/gate_fixed_last.log"
 LAST_HARD_GATE_OUTPUT="${LOGS_DIR}/gate_hard_last.log"
@@ -177,7 +187,7 @@ LAST_MODEL_VERIFY_OUTPUT="${LOGS_DIR}/gate_model_verify_last.log"
 GATE_SUMMARY_FILE="${LOGS_DIR}/gate_summary.txt"
 RUN_REPORT="${OUTPUTS_DIR}/run_report.md"
 
-touch "$EVENTS_LOG" "$CODEX_STDERR_LOG" "$GATE_LOG"
+touch "$EVENTS_LOG" "$ADAPTER_STDERR_LOG" "$GATE_LOG"
 
 START_TIME="$(timestamp_utc)"
 START_EPOCH="$(date -u +%s)"
@@ -320,8 +330,8 @@ if [[ "$GATING_MODE" == "fixed" ]]; then
     "$NEW_REPO_DIR" \
     "${INPUT_DIR}/diagram.puml" \
     "$EVENTS_LOG" \
-    "$CODEX_STDERR_LOG" \
-    "${OUTPUTS_DIR}/codex_last_message_initial.txt"; then
+    "$ADAPTER_STDERR_LOG" \
+    "${OUTPUTS_DIR}/adapter_last_message_initial.txt"; then
     ADAPTER_FAILURES=$((ADAPTER_FAILURES + 1))
     echo "[andvari] warning: initial adapter run returned non-zero status"
   fi
@@ -340,8 +350,8 @@ if [[ "$GATING_MODE" == "fixed" ]]; then
         "${INPUT_DIR}/diagram.puml" \
         "$GATE_SUMMARY_FILE" \
         "$EVENTS_LOG" \
-        "$CODEX_STDERR_LOG" \
-        "${OUTPUTS_DIR}/codex_last_message_iter_${iter}.txt" \
+        "$ADAPTER_STDERR_LOG" \
+        "${OUTPUTS_DIR}/adapter_last_message_iter_${iter}.txt" \
         "$iter"; then
         ADAPTER_FAILURES=$((ADAPTER_FAILURES + 1))
         echo "[andvari] warning: adapter repair iteration ${iter} returned non-zero status"
@@ -360,8 +370,8 @@ else
     "$NEW_REPO_DIR" \
     "${INPUT_DIR}/diagram.puml" \
     "$EVENTS_LOG" \
-    "$CODEX_STDERR_LOG" \
-    "${OUTPUTS_DIR}/codex_last_message_declaration.txt" \
+    "$ADAPTER_STDERR_LOG" \
+    "${OUTPUTS_DIR}/adapter_last_message_declaration.txt" \
     "$MAX_GATE_REVISIONS"; then
     ADAPTER_FAILURES=$((ADAPTER_FAILURES + 1))
     echo "[andvari] warning: declaration phase returned non-zero status"
@@ -377,8 +387,8 @@ else
     "${INPUT_DIR}/diagram.puml" \
     "$GATE_SUMMARY_FILE" \
     "$EVENTS_LOG" \
-    "$CODEX_STDERR_LOG" \
-    "${OUTPUTS_DIR}/codex_last_message_initial_implementation.txt" \
+    "$ADAPTER_STDERR_LOG" \
+    "${OUTPUTS_DIR}/adapter_last_message_initial_implementation.txt" \
     "0" \
     "$MAX_GATE_REVISIONS" \
     "$MODEL_GATE_TIMEOUT_SEC"; then
@@ -400,8 +410,8 @@ else
         "${INPUT_DIR}/diagram.puml" \
         "$GATE_SUMMARY_FILE" \
         "$EVENTS_LOG" \
-        "$CODEX_STDERR_LOG" \
-        "${OUTPUTS_DIR}/codex_last_message_iter_${iter}.txt" \
+        "$ADAPTER_STDERR_LOG" \
+        "${OUTPUTS_DIR}/adapter_last_message_iter_${iter}.txt" \
         "$iter" \
         "$MAX_GATE_REVISIONS" \
         "$MODEL_GATE_TIMEOUT_SEC"; then
@@ -443,8 +453,8 @@ cat > "$RUN_REPORT" <<REPORT_EOF
 
 ## Artifacts
 
-- Codex events log: \`runs/${RUN_ID}/logs/codex_events.jsonl\`
-- Codex stderr log: \`runs/${RUN_ID}/logs/codex_stderr.log\`
+- Adapter events log: \`runs/${RUN_ID}/logs/adapter_events.jsonl\`
+- Adapter stderr log: \`runs/${RUN_ID}/logs/adapter_stderr.log\`
 - Gate log: \`runs/${RUN_ID}/logs/gate.log\`
 - Report: \`runs/${RUN_ID}/outputs/run_report.md\`
 REPORT_EOF
@@ -457,5 +467,5 @@ fi
 
 echo "[andvari] status: FAIL"
 echo "[andvari] run folder: ${RUN_DIR}"
-echo "[andvari] see logs: ${GATE_LOG}, ${CODEX_STDERR_LOG}, ${EVENTS_LOG}"
+echo "[andvari] see logs: ${GATE_LOG}, ${ADAPTER_STDERR_LOG}, ${EVENTS_LOG}"
 exit 1

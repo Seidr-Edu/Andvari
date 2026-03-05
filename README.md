@@ -8,7 +8,7 @@ Output: isolated reconstructed repository, gate logs, and run report
 ## Single command
 
 ```bash
-./andvari-run.sh --diagram /path/to/diagram.puml --run-id optional-id --max-iter 8
+./andvari-run.sh --diagram /path/to/diagram.puml --run-id optional-id --max-iter 8 --adapter codex
 ```
 
 ## Key options
@@ -16,6 +16,7 @@ Output: isolated reconstructed repository, gate logs, and run report
 - `--diagram` (required): path to input diagram.
 - `--run-id` (optional): explicit run id (defaults to UTC timestamp).
 - `--max-iter` (optional): max repair loops after first implementation attempt.
+- `--adapter` (optional): adapter backend (defaults to `ANDVARI_ADAPTER` or `codex`).
 - `--gating-mode model|fixed` (optional):
   - `model` (default): adaptive self-gating with model-defined outcomes/gates.
   - `fixed`: legacy `gate_recon.sh` flow.
@@ -47,6 +48,7 @@ Output: isolated reconstructed repository, gate logs, and run report
 8. If acceptance fails, runner loops repair iterations up to `--max-iter`.
 
 `verify_outcome_coverage.sh` enforces:
+
 - locked `outcomes.initial.json` was not mutated
 - latest `gates.vN.json` does not exceed revision budget
 - model gate runner (`completion/run_all_gates.sh`) replays successfully
@@ -57,6 +59,7 @@ Output: isolated reconstructed repository, gate logs, and run report
 ## Fixed mode flow (legacy)
 
 `--gating-mode fixed` preserves current behavior:
+
 - initial reconstruction prompt
 - run `./gate_recon.sh`
 - summarize failures and iterate repairs up to `--max-iter`
@@ -65,8 +68,8 @@ Output: isolated reconstructed repository, gate logs, and run report
 
 Per run:
 
-- `runs/<run_id>/logs/codex_events.jsonl`
-- `runs/<run_id>/logs/codex_stderr.log`
+- `runs/<run_id>/logs/adapter_events.jsonl`
+- `runs/<run_id>/logs/adapter_stderr.log`
 - `runs/<run_id>/logs/gate.log`
 - `runs/<run_id>/outputs/run_report.md`
 
@@ -79,6 +82,7 @@ Per run:
 ### Required artifacts in generated repositories
 
 All reconstruction modes require the following artifacts:
+
 - `README.md` (build/test/run instructions)
 - `docs/ASSUMPTIONS.md` (documented assumptions and design decisions)
 - `docs/ARCHITECTURE.md` (architectural overview)
@@ -95,14 +99,14 @@ Model-mode generated repo artifacts (inside `new_repo`):
 
 ## Prerequisites
 
-- `codex` CLI installed and on `PATH`
-- active Codex auth (`codex login status` must succeed)
+- one adapter CLI installed and configured (`codex` or `claude`)
+- active auth for the selected adapter
 - Bash
 - Java + build tooling required by the generated project
 - `rg`
 - `perl` (used for JSON proof validation in `verify_outcome_coverage.sh`)
 
-The runner fails fast with actionable errors if Codex CLI is missing, unauthenticated, or cannot write its local session directory.
+The runner fails fast with actionable errors if the selected adapter cannot run.
 
 ## Adapter design
 
@@ -110,5 +114,32 @@ The runner uses an adapter entrypoint:
 
 - `scripts/adapters/adapter.sh`
 - `scripts/adapters/codex.sh`
+- `scripts/adapters/claude.sh`
 
-Codex adapter supports both fixed mode (legacy initial/fix prompts) and model mode (declaration + implementation prompts).
+Supported adapters are:
+
+- `codex` (default)
+- `claude`
+
+You can select adapters with either:
+
+```bash
+ANDVARI_ADAPTER=claude ./andvari-run.sh --diagram /path/to/diagram.puml
+```
+
+or:
+
+```bash
+./andvari-run.sh --diagram /path/to/diagram.puml --adapter claude
+```
+
+All adapters must satisfy the shared contract documented in `scripts/adapters/ADAPTER_CONTRACT.md`.
+
+## Adapter checks
+
+Run adapter checks before adding or refactoring adapters:
+
+```bash
+./scripts/adapters/check_adapter_conformance.sh
+./scripts/smoke_test_adapters.sh
+```
