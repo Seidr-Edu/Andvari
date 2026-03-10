@@ -1,6 +1,10 @@
 # Andvari
 
-Andvari runs a local diagram-to-Java reconstruction pipeline using Codex CLI.
+Andvari runs a local diagram-to-Java reconstruction pipeline using an adapter-backed CLI (`codex` or `claude`).
+
+This README assumes commands are run from the tool root.
+Inside the monorepo that is `tools/andvari/`; in the standalone `Andvari` repo these files live at repo root.
+From the monorepo root, use `./andvari-run.sh`.
 
 Input: PlantUML (`.puml`)  
 Output: isolated reconstructed repository, gate logs, and run report
@@ -8,28 +12,27 @@ Output: isolated reconstructed repository, gate logs, and run report
 ## Single command
 
 ```bash
-./andvari-run.sh --diagram /path/to/diagram.puml --tests /path/to/test-pack --run-id optional-id --max-iter 8
+./andvari-run.sh --diagram /path/to/diagram.puml --adapter claude --run-id optional-id --max-iter 8
+```
+
+If you prefer explicit env-driven output placement:
+
+```bash
+ANDVARI_RUNS_DIR=.data/andvari/runs \
+./andvari-run.sh --diagram /path/to/diagram.puml --adapter codex
 ```
 
 ## Key options
 
 - `--diagram` (required): path to input diagram.
-- `--tests` (optional): path to provided hard-tests pack (`java/` required, `resources/` optional).
 - `--run-id` (optional): explicit run id (defaults to UTC timestamp).
 - `--max-iter` (optional): max repair loops after first implementation attempt.
+- `--adapter` (required): adapter backend.
 - `--gating-mode model|fixed` (optional):
   - `model` (default): adaptive self-gating with model-defined outcomes/gates.
   - `fixed`: legacy `gate_recon.sh` flow.
 - `--max-gate-revisions` (optional, model mode): max revisions after `gates.v1` (default `3`).
 - `--model-gate-timeout-sec` (optional, model mode): timeout for replaying `completion/run_all_gates.sh` (default `120`).
-
-### Provided tests pack format
-
-If `--tests` is set, the directory must include:
-- `java/` (required): Java test/support source files (`.java`)
-- `resources/` (optional): test resource files copied to `src/test/resources`
-
-These provided tests are enforced as immutable hard gates in both gating modes.
 
 ## Model mode flow (default)
 
@@ -39,22 +42,20 @@ These provided tests are enforced as immutable hard gates in both gating modes.
    - `runs/<run_id>/logs`
    - `runs/<run_id>/outputs`
 2. Copies diagram to `runs/<run_id>/input/diagram.puml`.
-   - If `--tests` is provided, copies test pack to `runs/<run_id>/input/tests`.
 3. Copies runner policy/scripts into `new_repo`:
    - strategy-selected AGENTS template as `new_repo/AGENTS.md`
    - `gate_hard.sh`
    - `scripts/verify_outcome_coverage.sh`
    - `gate_recon.sh` (legacy compatibility)
-4. Runs declaration phase via Codex:
+4. Runs declaration phase via selected adapter:
    - model creates `completion/outcomes.initial.json`
    - model creates `completion/gates.v1.json`
    - model creates `completion/run_all_gates.sh`
 5. Runner locks hash of `completion/outcomes.initial.json`.
-6. Runs implementation phase via Codex.
+6. Runs implementation phase via selected adapter.
 7. Runner evaluates acceptance:
    - `./gate_hard.sh`
    - `./scripts/verify_outcome_coverage.sh --max-gate-revisions <N> --model-gate-timeout-sec <S>`
-   - when `../input/tests` exists, gate scripts sync those tests into `src/test` before test checks/execution
 8. If acceptance fails, runner loops repair iterations up to `--max-iter`.
 
 `verify_outcome_coverage.sh` enforces:
@@ -69,15 +70,15 @@ These provided tests are enforced as immutable hard gates in both gating modes.
 
 `--gating-mode fixed` preserves current behavior:
 - initial reconstruction prompt
-- run `./gate_recon.sh` (includes provided tests as hard gates when `../input/tests` exists)
+- run `./gate_recon.sh`
 - summarize failures and iterate repairs up to `--max-iter`
 
 ## Artifacts
 
 Per run:
 
-- `runs/<run_id>/logs/codex_events.jsonl`
-- `runs/<run_id>/logs/codex_stderr.log`
+- `runs/<run_id>/logs/adapter_events.jsonl`
+- `runs/<run_id>/logs/adapter_stderr.log`
 - `runs/<run_id>/logs/gate.log`
 - `runs/<run_id>/outputs/run_report.md`
 
@@ -106,14 +107,24 @@ Model-mode generated repo artifacts (inside `new_repo`):
 
 ## Prerequisites
 
-- `codex` CLI installed and on `PATH`
-- active Codex auth (`codex login status` must succeed)
+- `codex` or `claude` CLI installed and on `PATH` (matching selected adapter)
+- active auth/configuration for the selected adapter
 - Bash
 - Java + build tooling required by the generated project
 - `rg`
 - `perl` (used for JSON proof validation in `verify_outcome_coverage.sh`)
 
-The runner fails fast with actionable errors if Codex CLI is missing, unauthenticated, or cannot write its local session directory.
+The runner fails fast with actionable errors if the selected adapter cannot run non-interactively.
+
+## Runner modules
+
+- `andvari-run.sh`: thin entrypoint that wires config parsing, workspace init, mode dispatch, and final report/exit.
+- `scripts/lib/runner_common.sh`: shared helpers (usage, error handling, timestamping, sha256, validators).
+- `scripts/lib/runner_cli.sh`: CLI parsing and configuration validation.
+- `scripts/lib/runner_workspace.sh`: run workspace creation and artifact/log path initialization.
+- `scripts/lib/runner_gates.sh`: fixed/model gate execution plus gate failure summarization and outcome locking.
+- `scripts/lib/runner_flows.sh`: fixed-mode and model-mode orchestration flows with unchanged adapter call order.
+- `scripts/lib/runner_report.sh`: run report rendering and final pass/fail exit handling.
 
 ## Adapter design
 
@@ -121,5 +132,27 @@ The runner uses an adapter entrypoint:
 
 - `scripts/adapters/adapter.sh`
 - `scripts/adapters/codex.sh`
+- `scripts/adapters/claude.sh`
 
-Codex adapter supports both fixed mode (legacy initial/fix prompts) and model mode (declaration + implementation prompts).
+Supported adapters are:
+
+- `codex`
+- `claude`
+
+```bash
+./andvari-run.sh --diagram /path/to/diagram.puml --adapter claude
+```
+
+Both adapters support fixed mode (legacy initial/fix prompts), model mode (declaration + implementation prompts), and test-port adaptation prompts.
+
+## Docker
+
+Build the standalone image from the tool root:
+
+```bash
+docker build -t andvari:local .
+docker run --rm andvari:local --help
+```
+
+The image includes the shell and Java/build prerequisites needed by the runner.
+Adapter CLIs and authentication still need to be layered in or mounted at runtime.

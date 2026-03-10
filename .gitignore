@@ -1,7 +1,7 @@
+.data/
 .gradle/
 build/
 *.iml
 out/
 Attempt_*/
 runs/
-tests/

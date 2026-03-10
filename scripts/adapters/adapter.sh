@@ -4,77 +4,85 @@ set -euo pipefail
 ADAPTER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # shellcheck source=/dev/null
-source "${ADAPTER_DIR}/codex.sh"
+source "${ADAPTER_DIR}/registry.sh"
+
+_ANDVARI_LOADED_ADAPTER=""
+
+adapter_list() {
+  adapter_registry_list
+}
+
+adapter_is_supported() {
+  local adapter="$1"
+  [[ -n "$adapter" ]] || return 1
+  adapter_registry_get_script "$adapter" >/dev/null 2>&1
+}
+
+# _adapter_load ADAPTER_NAME
+# Sources the adapter implementation script on first use.
+_adapter_load() {
+  local adapter="$1"
+  if [[ "$_ANDVARI_LOADED_ADAPTER" == "$adapter" ]]; then
+    return 0
+  fi
+  local script
+  script="$(adapter_registry_get_script "$adapter")" || {
+    echo "Unsupported adapter: ${adapter}" >&2
+    return 1
+  }
+  [[ -f "$script" ]] || {
+    echo "Adapter script not found: ${script}" >&2
+    return 1
+  }
+  # shellcheck source=/dev/null
+  source "$script"
+  _ANDVARI_LOADED_ADAPTER="$adapter"
+}
 
 adapter_check_prereqs() {
   local adapter="$1"
-  case "$adapter" in
-    codex)
-      codex_check_prereqs
-      ;;
-    *)
-      echo "Unsupported adapter: ${adapter}" >&2
-      return 1
-      ;;
-  esac
+  _adapter_load "$adapter" || return 1
+  "${adapter}_check_prereqs"
 }
 
 adapter_run_initial_reconstruction() {
   local adapter="$1"
   shift
-
-  case "$adapter" in
-    codex)
-      codex_run_initial_reconstruction "$@"
-      ;;
-    *)
-      echo "Unsupported adapter: ${adapter}" >&2
-      return 1
-      ;;
-  esac
+  _adapter_load "$adapter" || return 1
+  "${adapter}_run_initial_reconstruction" "$@"
 }
 
 adapter_run_fix_iteration() {
   local adapter="$1"
   shift
-
-  case "$adapter" in
-    codex)
-      codex_run_fix_iteration "$@"
-      ;;
-    *)
-      echo "Unsupported adapter: ${adapter}" >&2
-      return 1
-      ;;
-  esac
+  _adapter_load "$adapter" || return 1
+  "${adapter}_run_fix_iteration" "$@"
 }
 
 adapter_run_gate_declaration() {
   local adapter="$1"
   shift
-
-  case "$adapter" in
-    codex)
-      codex_run_gate_declaration "$@"
-      ;;
-    *)
-      echo "Unsupported adapter: ${adapter}" >&2
-      return 1
-      ;;
-  esac
+  _adapter_load "$adapter" || return 1
+  "${adapter}_run_gate_declaration" "$@"
 }
 
 adapter_run_implementation_iteration() {
   local adapter="$1"
   shift
+  _adapter_load "$adapter" || return 1
+  "${adapter}_run_implementation_iteration" "$@"
+}
 
-  case "$adapter" in
-    codex)
-      codex_run_implementation_iteration "$@"
-      ;;
-    *)
-      echo "Unsupported adapter: ${adapter}" >&2
-      return 1
-      ;;
-  esac
+adapter_run_test_port_initial() {
+  local adapter="$1"
+  shift
+  _adapter_load "$adapter" || return 1
+  "${adapter}_run_test_port_initial" "$@"
+}
+
+adapter_run_test_port_iteration() {
+  local adapter="$1"
+  shift
+  _adapter_load "$adapter" || return 1
+  "${adapter}_run_test_port_iteration" "$@"
 }
