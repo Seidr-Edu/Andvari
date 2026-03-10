@@ -2,6 +2,8 @@
 # runner_cli.sh - CLI argument parsing and configuration validation
 # Handles command-line option parsing, defaults, and config validation for Andvari runner
 
+# shellcheck disable=SC2034 # Sets runner config globals consumed by other sourced modules.
+
 andvari_parse_args() {
   DIAGRAM_PATH=""
   RUN_ID=""

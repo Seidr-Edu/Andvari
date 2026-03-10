@@ -25,8 +25,6 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
 _usage() {
   grep '^#' "$0" | grep -v '^#!/' | sed 's/^# \{0,2\}//'
 }

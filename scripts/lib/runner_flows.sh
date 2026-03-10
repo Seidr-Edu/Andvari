@@ -2,6 +2,8 @@
 # runner_flows.sh - Fixed and model mode orchestration flows
 # Implements fixed-gate and model-gate execution flows with repair iteration loops
 
+# shellcheck disable=SC2034 # Updates shared flow state globals read by the runner report.
+
 andvari_execute_fixed_flow() {
   echo "[andvari] starting fixed-gate reconstruction..."
 

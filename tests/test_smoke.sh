@@ -49,10 +49,14 @@ case_workspace_init_copies_required_artifacts() {
   tmp="$(at_mktemp_dir)"
   setup_fake_codex "$tmp"
 
+  # shellcheck disable=SC2034
   ROOT_DIR="$TOOL_ROOT"
+  # shellcheck disable=SC2034
   DIAGRAM_PATH="${TOOL_ROOT}/examples/diagram.puml"
+  # shellcheck disable=SC2034
   RUN_ID="smoke-run"
   ADAPTER="codex"
+  # shellcheck disable=SC2034
   AGENTS_TEMPLATE_PATH="${TOOL_ROOT}/AGENTS.model.md"
   export ANDVARI_RUNS_DIR="${tmp}/runs"
 

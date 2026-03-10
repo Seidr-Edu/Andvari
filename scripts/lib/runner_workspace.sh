@@ -2,6 +2,8 @@
 # runner_workspace.sh - Workspace and artifact path initialization
 # Creates run directories, copies required files, and initializes artifact/log paths
 
+# shellcheck disable=SC2034 # Initializes workspace path globals consumed by other sourced modules.
+
 andvari_init_workspace() {
   RUNS_DIR="${ANDVARI_RUNS_DIR:-${ROOT_DIR}/runs}"
   RUN_DIR="${RUNS_DIR}/${RUN_ID}"
