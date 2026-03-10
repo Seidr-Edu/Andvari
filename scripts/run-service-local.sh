@@ -44,14 +44,42 @@ IMAGE_TAG="andvari:local"
 # ── Parse args ────────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --diagram)            DIAGRAM_PATH="$2";   shift 2 ;;
-    --adapter)            ADAPTER="$2";         shift 2 ;;
-    --gating-mode)        GATING_MODE="$2";     shift 2 ;;
-    --max-iter)           MAX_ITER="$2";         shift 2 ;;
-    --run-id)             RUN_ID="$2";           shift 2 ;;
-    --codex-home)         CODEX_HOME_PATH="$2";  shift 2 ;;
+    --diagram)
+      [[ $# -ge 2 ]] || { echo "error: --diagram requires a value" >&2; exit 1; }
+      DIAGRAM_PATH="$2"
+      shift 2
+      ;;
+    --adapter)
+      [[ $# -ge 2 ]] || { echo "error: --adapter requires a value" >&2; exit 1; }
+      ADAPTER="$2"
+      shift 2
+      ;;
+    --gating-mode)
+      [[ $# -ge 2 ]] || { echo "error: --gating-mode requires a value" >&2; exit 1; }
+      GATING_MODE="$2"
+      shift 2
+      ;;
+    --max-iter)
+      [[ $# -ge 2 ]] || { echo "error: --max-iter requires a value" >&2; exit 1; }
+      MAX_ITER="$2"
+      shift 2
+      ;;
+    --run-id)
+      [[ $# -ge 2 ]] || { echo "error: --run-id requires a value" >&2; exit 1; }
+      RUN_ID="$2"
+      shift 2
+      ;;
+    --codex-home)
+      [[ $# -ge 2 ]] || { echo "error: --codex-home requires a value" >&2; exit 1; }
+      CODEX_HOME_PATH="$2"
+      shift 2
+      ;;
     --keep-tmp)           KEEP_TMP="true";       shift ;;
-    --image-tag)          IMAGE_TAG="$2";        shift 2 ;;
+    --image-tag)
+      [[ $# -ge 2 ]] || { echo "error: --image-tag requires a value" >&2; exit 1; }
+      IMAGE_TAG="$2"
+      shift 2
+      ;;
     -h|--help)            _usage; exit 0 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac

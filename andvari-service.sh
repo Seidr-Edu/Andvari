@@ -389,7 +389,16 @@ andvari_service_prepare_output_dir() {
     echo "error: ${SVC_RUN_DIR} is not writable; cannot emit service report" >&2
     return 1
   fi
-  mkdir -p "${SVC_RUN_DIR}/outputs"
+
+  if ! mkdir -p "${SVC_RUN_DIR}/outputs"; then
+    echo "error: failed to create ${SVC_RUN_DIR}/outputs" >&2
+    return 1
+  fi
+
+  if [[ ! -d "${SVC_RUN_DIR}/outputs" || ! -w "${SVC_RUN_DIR}/outputs" ]]; then
+    echo "error: ${SVC_RUN_DIR}/outputs is not writable; cannot emit service report" >&2
+    return 1
+  fi
 }
 
 # ── Runtime directory setup ───────────────────────────────────────────────────

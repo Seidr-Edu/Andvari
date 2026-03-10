@@ -50,11 +50,13 @@ count_test_report_files() {
   # Counts JUnit XML reports from Maven surefire/failsafe and any Gradle
   # test-results subdir (covers standard 'test' as well as custom source sets
   # like 'jarFileTest', 'integrationTest', etc.).
-  find . -type f \
-    \( -path "*/target/surefire-reports/TEST-*.xml" \
-       -o -path "*/target/failsafe-reports/TEST-*.xml" \
-       -o -path "*/build/test-results/*/*.xml" \) \
-    -print 2>/dev/null | wc -l | tr -d ' '
+  {
+    find . -type f \
+      \( -path "*/target/surefire-reports/TEST-*.xml" \
+         -o -path "*/target/failsafe-reports/TEST-*.xml" \
+         -o -path "*/build/test-results/*/*.xml" \) \
+      -print 2>/dev/null || true
+  } | wc -l | tr -d ' '
 }
 
 # Infer the Gradle test task to run. Returns 'test' for the standard layout;

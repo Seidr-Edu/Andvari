@@ -309,7 +309,27 @@ case_non_writable_run_dir_exits_1() {
   at_assert_eq 1 "$svc_exit" "service must exit 1 when run dir is not writable"
 }
 
-# ── 10. artifact promotion writes canonical output dirs ──────────────────────
+# ── 10. non-writable outputs dir — exits 1, no report ───────────────────────
+case_non_writable_outputs_dir_exits_1() {
+  local tmp; tmp="$(at_mktemp_dir)"
+  local manifest="${tmp}/manifest.yaml"
+  _write_valid_manifest "$manifest"
+
+  local run_dir="${tmp}/run"
+  mkdir -p "${run_dir}/outputs"
+  chmod 755 "$run_dir"
+  chmod 555 "${run_dir}/outputs"
+
+  local svc_exit=0
+  ANDVARI_MANIFEST="$manifest" \
+  ANDVARI_SERVICE_RUN_DIR="$run_dir" \
+    bash "${ROOT_DIR}/andvari-service.sh" || svc_exit=$?
+
+  chmod 755 "${run_dir}/outputs"
+  at_assert_eq 1 "$svc_exit" "service must exit 1 when outputs dir is not writable"
+}
+
+# ── 11. artifact promotion writes canonical output dirs ──────────────────────
 # Verifies that after a full service run (runner exits 1 due to gate failure
 # with fake codex), all canonical output directories and the report file exist.
 case_artifact_promotion_layout() {
@@ -366,6 +386,7 @@ at_run_case "unsupported_adapter_emits_report"  case_unsupported_adapter_emits_r
 at_run_case "env_overrides_manifest_adapter"    case_env_overrides_manifest_adapter
 at_run_case "invalid_run_id_emits_report"       case_invalid_run_id_emits_report
 at_run_case "non_writable_run_dir_exits_1"      case_non_writable_run_dir_exits_1
+at_run_case "non_writable_outputs_dir_exits_1"  case_non_writable_outputs_dir_exits_1
 at_run_case "artifact_promotion_layout"         case_artifact_promotion_layout
 
 at_finish_suite
