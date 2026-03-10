@@ -157,6 +157,13 @@ docker run --rm andvari:local --help
 The image includes the shell and Java/build prerequisites needed by the runner.
 Adapter CLIs and authentication still need to be layered in or mounted at runtime.
 
+## Release
+This repo includes:
+
+- `.github/workflows/release.yml` for semantic-release
+- `.github/workflows/publish-ghcr.yml` for publishing `ghcr.io/<owner>/andvari`
+- `.releaserc.json` for semantic-release branch/plugin configuration
+
 ## Service Mode
 
 Service mode is the production entrypoint for running Andvari as a containerised
@@ -319,4 +326,3 @@ and runs `andvari:local` with the full DO mount contract.
    `/run/config`, `/run`) plus the two provider mounts.
 4. Consume `runs/<runId>/services/andvari/run/outputs/run_report.json`.
 5. Collect `runs/<runId>/services/andvari/run/artifacts/generated-repo/`.
-
