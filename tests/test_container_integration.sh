@@ -137,7 +137,7 @@ YAML
     "/run/artifacts/andvari/report must exist"
 
   # Report must carry canonical service fields
-  local schema_ver run_id runner_invoked
+  local schema_ver runner_invoked
   schema_ver="$(python3 -c "import json; d=json.load(open('${run_dir}/outputs/run_report.json')); print(d.get('service_schema_version',''))")"
   runner_invoked="$(python3 -c "import json; d=json.load(open('${run_dir}/outputs/run_report.json')); print(str(d.get('runner_invoked',False)).lower())")"
 

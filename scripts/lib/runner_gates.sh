@@ -17,7 +17,7 @@ andvari_run_fixed_gate() {
   local gate_status=$?
   set -e
 
-  cat "$LAST_FIXED_GATE_OUTPUT" | tee -a "$GATE_LOG"
+  tee -a "$GATE_LOG" < "$LAST_FIXED_GATE_OUTPUT"
   echo >> "$GATE_LOG"
 
   return "$gate_status"
@@ -37,7 +37,7 @@ andvari_run_model_acceptance() {
   local hard_status=$?
   set -e
 
-  cat "$LAST_HARD_GATE_OUTPUT" | tee -a "$GATE_LOG"
+  tee -a "$GATE_LOG" < "$LAST_HARD_GATE_OUTPUT"
   echo >> "$GATE_LOG"
 
   if [[ "$hard_status" -ne 0 ]]; then
@@ -55,7 +55,7 @@ andvari_run_model_acceptance() {
   local model_status=$?
   set -e
 
-  cat "$LAST_MODEL_VERIFY_OUTPUT" | tee -a "$GATE_LOG"
+  tee -a "$GATE_LOG" < "$LAST_MODEL_VERIFY_OUTPUT"
   echo >> "$GATE_LOG"
 
   return "$model_status"
