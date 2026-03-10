@@ -16,11 +16,27 @@ RUN apt-get update \
     ripgrep \
   && rm -rf /var/lib/apt/lists/*
 
+# Create a dedicated non-root user for service mode
+RUN groupadd -r andvari && useradd -r -g andvari -d /app -s /bin/bash andvari
+
+# Pre-create /run so the non-root user can write to it at container start
+RUN mkdir -p /run && chown andvari:andvari /run
+
 WORKDIR /app
 
 COPY . .
 
-RUN chmod +x ./andvari-run.sh ./gate_hard.sh ./gate_recon.sh ./scripts/verify_outcome_coverage.sh ./tests/run.sh
+RUN chmod +x \
+    ./andvari-run.sh \
+    ./andvari-service.sh \
+    ./gate_hard.sh \
+    ./gate_recon.sh \
+    ./scripts/verify_outcome_coverage.sh \
+    ./tests/run.sh
 
-ENTRYPOINT ["./andvari-run.sh"]
-CMD ["--help"]
+# Provider CLIs (codex, claude) are NOT baked into the image.
+# Mount /opt/provider/bin read-only at container run time.
+
+USER andvari
+
+ENTRYPOINT ["./andvari-service.sh"]
