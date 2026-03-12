@@ -422,7 +422,7 @@ andvari_service_bootstrap_provider() {
     mkdir -p "${runtime_dir}/sessions"
 
     if [[ -d "$SVC_PROVIDER_SEED" ]]; then
-      cp -a "${SVC_PROVIDER_SEED}/." "${runtime_dir}/"
+      cp -R "${SVC_PROVIDER_SEED}/." "${runtime_dir}/"
     fi
 
     export CODEX_HOME="$runtime_dir"
