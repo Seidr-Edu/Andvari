@@ -32,6 +32,13 @@ _write_fake_codex() {
   mkdir -p "$bin_dir"
   cat > "${bin_dir}/codex" <<'SH'
 #!/usr/bin/env bash
+if [[ -n "${ANDVARI_TEST_CODEX_ARGS_LOG:-}" ]]; then
+  {
+    printf 'argv:'
+    printf ' %q' "$@"
+    printf '\n'
+  } >> "${ANDVARI_TEST_CODEX_ARGS_LOG}"
+fi
 case "${1:-}" in
   login)
     exit 0
@@ -113,6 +120,61 @@ case_valid_manifest_startup() {
   at_assert_eq 0 "$_SVC_EXIT" "service should exit 0 when report is emitted"
   at_assert_file_exists "${_SVC_RUN_DIR}/outputs/run_report.json" "run_report.json must exist"
   at_assert_file_exists "${_SVC_RUN_DIR}/outputs/summary.md" "summary.md must exist"
+}
+
+# ── 1b. codex exec uses container-safe flags ─────────────────────────────────
+case_codex_exec_uses_container_safe_flags() {
+  local tmp; tmp="$(at_mktemp_dir)"
+  local manifest="${tmp}/manifest.yaml"
+  local args_log="${tmp}/codex_args.log"
+
+  cat > "$manifest" <<'YAML'
+version: 1
+run_id: 20260314T080000Z__flags
+adapter: codex
+gating_mode: fixed
+max_iter: 1
+diagram_relpath: diagram.puml
+YAML
+
+  local run_dir="${tmp}/run"
+  local input_dir="${tmp}/input_model"
+  local bin_dir="${tmp}/provider_bin"
+  local seed_dir="${tmp}/provider_seed"
+
+  mkdir -p "$run_dir" "$input_dir" "$bin_dir" "$seed_dir"
+  _write_fake_codex "$bin_dir"
+  _write_provider_seed "$seed_dir"
+  cp "${ROOT_DIR}/examples/diagram.puml" "${input_dir}/diagram.puml"
+
+  local svc_exit=0
+  ANDVARI_MANIFEST="$manifest" \
+  ANDVARI_SERVICE_RUN_DIR="$run_dir" \
+  ANDVARI_SERVICE_INPUT_DIR="$input_dir" \
+  ANDVARI_SERVICE_PROVIDER_BIN="$bin_dir" \
+  ANDVARI_SERVICE_PROVIDER_SEED="$seed_dir" \
+  ANDVARI_TEST_CODEX_ARGS_LOG="$args_log" \
+    bash "${ROOT_DIR}/andvari-service.sh" || svc_exit=$?
+
+  at_assert_eq 0 "$svc_exit" "service should exit 0 when report is emitted"
+  at_assert_file_exists "$args_log" "fake codex must record exec arguments"
+
+  if ! grep -q -- '--dangerously-bypass-approvals-and-sandbox' "$args_log"; then
+    echo "ASSERT failed: codex exec must bypass the inner sandbox in service mode" >&2
+    return 1
+  fi
+  if grep -q -- '--full-auto' "$args_log"; then
+    echo "ASSERT failed: codex exec must not rely on --full-auto in service mode" >&2
+    return 1
+  fi
+  if ! grep -q -- '--cd' "$args_log"; then
+    echo "ASSERT failed: codex exec must set an explicit working root" >&2
+    return 1
+  fi
+  if ! grep -q -- '/run/runner-internal/20260314T080000Z__flags/new_repo' "$args_log"; then
+    echo "ASSERT failed: codex exec must target the generated repo workspace" >&2
+    return 1
+  fi
 }
 
 # ── 2. malformed YAML emits report ────────────────────────────────────────────
@@ -378,6 +440,7 @@ YAML
 echo "=== test_service.sh ==="
 
 at_run_case "valid_manifest_startup"            case_valid_manifest_startup
+at_run_case "codex_exec_uses_container_safe_flags" case_codex_exec_uses_container_safe_flags
 at_run_case "malformed_yaml_emits_report"       case_malformed_yaml_emits_report
 at_run_case "unknown_key_rejected"              case_unknown_key_rejected
 at_run_case "invalid_gating_mode_emits_report"  case_invalid_gating_mode_emits_report
