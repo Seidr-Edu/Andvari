@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "profile_name": "Sonar way",
+  "profile_key": "AZvf8pNwYhj-UqYS_Z5n",
+  "language": "java",
+  "organization": "seidr-edu",
+  "sonar_base_url": "https://sonarcloud.io",
+  "is_built_in": true,
+  "is_default": true,
+  "rules_updated_at": "2026-03-16T14:10:41+0000",
+  "exported_at_utc": "2026-03-17T14:53:44Z",
+  "active_rule_count": 586,
+  "api_rule_count": 581,
+  "xml_only_rule_count": 5,
+  "xml_only_rule_keys": [
+    "java:S6263",
+    "java:S6863",
+    "java:S7183",
+    "java:S7481",
+    "javaarchitecture:S7788"
+  ],
+  "artifacts": {
+    "archive/profile-backup.xml": {
+      "sha256": "b122a7ffeae092aa32bf00feb1f1d7ee164b65821d5eb19aaa08b0287283819f"
+    },
+    "archive/rules.raw.json": {
+      "sha256": "35080340eaa540b64b000df36d24756ded9d5126c0fe58b5995792d88a123890"
+    },
+    "model/rules.lock.json": {
+      "sha256": "089e56862a9d537f06f5495dc08b04686f16ce557888482b0e747a3dbab28560"
+    },
+    "model/rules.summary.md": {
+      "sha256": "9275f2ef8dc616ba653231b899cd2afcc4ad7f76df90395ca09d84fd06ee000e"
+    }
+  }
+}

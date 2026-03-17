@@ -14,6 +14,9 @@ Reconstruct a complete, working Java repository from the provided PlantUML diagr
 
 ## Source of truth and scope
 - Use only `../input/diagram.puml` as source of behavior/structure.
+- Treat `docs/CODE_QUALITY_RULES.md` and `completion/context/sonar_rules.lock.json` as non-functional code-quality constraints only.
+- Read `docs/CODE_QUALITY_RULES.md` before implementation; consult the JSON only when exact rule metadata or parameter values are needed.
+- If a Sonar quality rule appears to conflict with the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
 - Operate only inside this run repository.
 - If underspecified, make reasonable choices and document them in `docs/ASSUMPTIONS.md`.
 

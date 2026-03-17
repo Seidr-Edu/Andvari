@@ -15,6 +15,12 @@ Output: isolated reconstructed repository, gate logs, and run report
 ./andvari-run.sh --diagram /path/to/diagram.puml --adapter claude --run-id optional-id --max-iter 8
 ```
 
+Run the same checks as the GitHub Actions CI workflow locally:
+
+```bash
+bash scripts/run-ci-local.sh
+```
+
 If you prefer explicit env-driven output placement:
 
 ```bash
@@ -44,6 +50,9 @@ ANDVARI_RUNS_DIR=.data/andvari/runs \
 2. Copies diagram to `runs/<run_id>/input/diagram.puml`.
 3. Copies runner policy/scripts into `new_repo`:
    - strategy-selected AGENTS template as `new_repo/AGENTS.md`
+   - Sonar quality rules summary as `new_repo/docs/CODE_QUALITY_RULES.md`
+   - Sonar quality rules lock file as `new_repo/completion/context/sonar_rules.lock.json`
+   - Sonar quality rules manifest as `new_repo/completion/context/sonar_rules_manifest.json`
    - `gate_hard.sh`
    - `scripts/verify_outcome_coverage.sh`
    - `gate_recon.sh` (legacy compatibility)
@@ -104,6 +113,18 @@ Model-mode generated repo artifacts (inside `new_repo`):
 - `completion/run_all_gates.sh`
 - `completion/proof/results.vN.json`
 - `completion/proof/logs/*.log`
+- `completion/context/sonar_rules.lock.json`
+- `completion/context/sonar_rules_manifest.json`
+- `docs/CODE_QUALITY_RULES.md`
+
+## Quality Rules Bundle
+
+Andvari ships a frozen Sonar quality-rules bundle under `resources/quality-rules/`.
+At workspace init, the runner copies only the model-facing bundle files into the
+generated repo. The archival source files stay inside the tool repository and
+are not staged into the run workspace. If more than one bundle directory is
+present, set `ANDVARI_QUALITY_RULES_BUNDLE=<bundle-dir-name>` to select the one
+you want; otherwise the runner fails fast rather than guessing.
 
 ## Prerequisites
 
