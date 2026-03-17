@@ -24,6 +24,15 @@ at_assert_file_exists() {
   fi
 }
 
+at_assert_file_not_exists() {
+  local path="$1"
+  local msg="${2:-expected file to be absent}"
+  if [[ -f "$path" ]]; then
+    printf 'ASSERT_FILE_NOT_EXISTS failed: %s\nfile: %s\n' "$msg" "$path" >&2
+    return 1
+  fi
+}
+
 at_assert_dir_exists() {
   local path="$1"
   local msg="${2:-expected directory to exist}"

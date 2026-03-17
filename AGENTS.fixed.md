@@ -6,7 +6,7 @@ Reconstruct a complete, working Java repository from the provided PlantUML diagr
 ## Hard requirements
 - Language: **Java**
 - Build system: choose exactly one (**Gradle** or **Maven**)
-- Use only `../input/diagram.puml` as source of truth
+- Use `../input/diagram.puml` as the source of truth for behavior and structure
 - No placeholder stubs
 - Provide meaningful tests
 - Provide runnable demo (`main` and executable `run_demo.sh`)
@@ -20,6 +20,9 @@ Reconstruct a complete, working Java repository from the provided PlantUML diagr
 - `run_demo.sh`
 
 ## Working rules
+- Treat `docs/CODE_QUALITY_RULES.md` and `completion/context/sonar_rules.lock.json` as non-functional code-quality constraints only.
+- Read `docs/CODE_QUALITY_RULES.md` before implementation; consult the JSON only when exact rule metadata or parameter values are needed.
+- If a Sonar quality rule appears to conflict with the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
 - Operate only inside this run repository.
 - Resolve ambiguity with reasonable assumptions and record them in `docs/ASSUMPTIONS.md`.
 - Keep implementation deterministic where practical.

@@ -67,11 +67,34 @@ case_workspace_init_copies_required_artifacts() {
   at_assert_dir_exists "$RUN_DIR" "run directory should be created"
   at_assert_file_exists "${INPUT_DIR}/diagram.puml" "diagram should be copied into input directory"
   at_assert_file_exists "${NEW_REPO_DIR}/AGENTS.md" "selected AGENTS template should be copied into new repo"
+  at_assert_file_exists "${NEW_REPO_DIR}/docs/CODE_QUALITY_RULES.md" "quality rules summary should be staged into the run repo"
+  at_assert_file_exists "${NEW_REPO_DIR}/completion/context/sonar_rules.lock.json" "quality rules lock file should be staged into the run repo"
+  at_assert_file_exists "${NEW_REPO_DIR}/completion/context/sonar_rules_manifest.json" "quality rules manifest should be staged into the run repo"
   at_assert_file_exists "${NEW_REPO_DIR}/gate_hard.sh" "hard gate script should be copied into new repo"
   at_assert_file_exists "${NEW_REPO_DIR}/scripts/verify_outcome_coverage.sh" "verification script should be copied into new repo"
+  at_assert_file_not_exists "${NEW_REPO_DIR}/profile-backup.xml" "archival profile backup must not be staged into the run repo"
+  at_assert_file_not_exists "${NEW_REPO_DIR}/rules.raw.json" "archival raw rules export must not be staged into the run repo"
   at_assert_file_exists "${EVENTS_LOG}" "events log should be initialized"
+}
+
+case_prompts_reference_staged_quality_rules() {
+  local model_agents
+  model_agents="$(cat "${TOOL_ROOT}/AGENTS.model.md")"
+  at_assert_contains "$model_agents" "docs/CODE_QUALITY_RULES.md" "model AGENTS should mention the staged quality rules summary"
+  at_assert_contains "$model_agents" "diagram's behavior" "model AGENTS should preserve diagram precedence"
+
+  local fixed_agents
+  fixed_agents="$(cat "${TOOL_ROOT}/AGENTS.fixed.md")"
+  at_assert_contains "$fixed_agents" "completion/context/sonar_rules.lock.json" "fixed AGENTS should mention the staged quality rules lock file"
+  at_assert_contains "$fixed_agents" "diagram's behavior" "fixed AGENTS should preserve diagram precedence"
+
+  local gate_prompt
+  gate_prompt="$(cat "${TOOL_ROOT}/prompts/gate_declaration.md")"
+  at_assert_contains "$gate_prompt" 'Read `docs/CODE_QUALITY_RULES.md`' "gate declaration prompt should read the quality rules summary first"
+  at_assert_contains "$gate_prompt" "non-functional quality constraints only" "gate declaration prompt should distinguish behavioral and quality sources"
 }
 
 at_run_case "help_uses_runner_usage" case_help_uses_runner_usage
 at_run_case "workspace_init_copies_required_artifacts" case_workspace_init_copies_required_artifacts
+at_run_case "prompts_reference_staged_quality_rules" case_prompts_reference_staged_quality_rules
 at_finish_suite

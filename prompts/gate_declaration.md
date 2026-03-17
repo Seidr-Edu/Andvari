@@ -11,6 +11,11 @@ Goal for this phase:
 - Define diagram-derived completion outcomes and initial verification gates before implementation.
 - Do not implement production/test source code in this phase.
 
+Before you start:
+- Read `docs/CODE_QUALITY_RULES.md`.
+- Consult `completion/context/sonar_rules.lock.json` only when you need exact rule metadata or parameter values.
+- Treat the diagram as the behavioral source of truth and the Sonar files as non-functional quality constraints only.
+
 Create these files:
 1) completion/outcomes.initial.json
    - JSON array only.
@@ -34,6 +39,7 @@ Rules:
 - Every outcome id in outcomes.initial.json must appear in at least one gate outcome_ids entry in gates.v1.json.
 - Operate only inside this run repository.
 - Use ../input/diagram.puml as read-only input.
+- If a Sonar quality rule appears to conflict with the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
 - Do not inspect or modify any other run directories.
 
 Return a concise summary of the declared outcomes and gates.
