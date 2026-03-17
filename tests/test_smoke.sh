@@ -90,7 +90,7 @@ case_prompts_reference_staged_quality_rules() {
 
   local gate_prompt
   gate_prompt="$(cat "${TOOL_ROOT}/prompts/gate_declaration.md")"
-  at_assert_contains "$gate_prompt" 'Read `docs/CODE_QUALITY_RULES.md`' "gate declaration prompt should read the quality rules summary first"
+  at_assert_contains "$gate_prompt" "Read \`docs/CODE_QUALITY_RULES.md\`" "gate declaration prompt should read the quality rules summary first"
   at_assert_contains "$gate_prompt" "non-functional quality constraints only" "gate declaration prompt should distinguish behavioral and quality sources"
 }
 

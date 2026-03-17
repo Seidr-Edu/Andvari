@@ -15,6 +15,12 @@ Output: isolated reconstructed repository, gate logs, and run report
 ./andvari-run.sh --diagram /path/to/diagram.puml --adapter claude --run-id optional-id --max-iter 8
 ```
 
+Run the same checks as the GitHub Actions CI workflow locally:
+
+```bash
+bash scripts/run-ci-local.sh
+```
+
 If you prefer explicit env-driven output placement:
 
 ```bash
