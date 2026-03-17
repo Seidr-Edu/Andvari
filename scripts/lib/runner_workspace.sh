@@ -62,10 +62,37 @@ andvari_resolve_quality_rules_bundle() {
   local quality_rules_root="${ROOT_DIR}/resources/quality-rules"
   [[ -d "$quality_rules_root" ]] || andvari_fail "Missing quality rules root: ${quality_rules_root}"
 
+  local bundle_override="${ANDVARI_QUALITY_RULES_BUNDLE:-}"
   local bundle_dir=""
-  while IFS= read -r candidate; do
-    bundle_dir="$candidate"
-  done < <(find "$quality_rules_root" -mindepth 1 -maxdepth 1 -type d | sort)
+  if [[ -n "$bundle_override" ]]; then
+    [[ "$bundle_override" != */* && "$bundle_override" != *..* && "$bundle_override" != *:* ]] \
+      || andvari_fail "ANDVARI_QUALITY_RULES_BUNDLE must be a bundle directory name under ${quality_rules_root}"
+    bundle_dir="${quality_rules_root}/${bundle_override}"
+    [[ -d "$bundle_dir" ]] || andvari_fail "Requested quality rules bundle not found: ${bundle_dir}"
+  else
+    local -a bundle_dirs=()
+    local candidate
+    while IFS= read -r candidate; do
+      bundle_dirs+=("$candidate")
+    done < <(LC_ALL=C find "$quality_rules_root" -mindepth 1 -maxdepth 1 -type d | sort)
+
+    case "${#bundle_dirs[@]}" in
+      0)
+        andvari_fail "No quality rules bundles found under ${quality_rules_root}"
+        ;;
+      1)
+        bundle_dir="${bundle_dirs[0]}"
+        ;;
+      *)
+        local -a bundle_names=()
+        for candidate in "${bundle_dirs[@]}"; do
+          bundle_names+=("${candidate##*/}")
+        done
+        andvari_fail \
+          "Multiple quality rules bundles found under ${quality_rules_root}: ${bundle_names[*]}. Set ANDVARI_QUALITY_RULES_BUNDLE to one of those directory names."
+        ;;
+    esac
+  fi
 
   [[ -n "$bundle_dir" ]] || andvari_fail "No quality rules bundles found under ${quality_rules_root}"
 

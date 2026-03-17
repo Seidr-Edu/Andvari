@@ -122,7 +122,9 @@ Model-mode generated repo artifacts (inside `new_repo`):
 Andvari ships a frozen Sonar quality-rules bundle under `resources/quality-rules/`.
 At workspace init, the runner copies only the model-facing bundle files into the
 generated repo. The archival source files stay inside the tool repository and
-are not staged into the run workspace.
+are not staged into the run workspace. If more than one bundle directory is
+present, set `ANDVARI_QUALITY_RULES_BUNDLE=<bundle-dir-name>` to select the one
+you want; otherwise the runner fails fast rather than guessing.
 
 ## Prerequisites
 

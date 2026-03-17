@@ -19,7 +19,7 @@ import argparse
 import hashlib
 import json
 import shutil
-from collections import Counter, defaultdict
+from collections import Counter
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
