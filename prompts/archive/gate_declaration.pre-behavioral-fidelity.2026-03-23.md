@@ -9,16 +9,12 @@ Policy:
 
 Goal for this phase:
 - Define diagram-derived completion outcomes and initial verification gates before implementation.
-- Maximize confidence that the reconstructed repository will match the unseen original repository's observable behavior, not merely compile and pass shallow local checks.
 - Do not implement production/test source code in this phase.
 
 Before you start:
 - Read `docs/CODE_QUALITY_RULES.md`.
 - Consult `completion/context/sonar_rules.lock.json` only when you need exact rule metadata or parameter values.
-- Treat the diagram as the primary behavioral evidence and the Sonar files as non-functional quality constraints only.
-- Assume most diagram details are useful, but some may be omitted, inconsistent, or incorrect.
-- Follow the diagram by default.
-- Remember that this repository will later be evaluated using adapted tests derived from the original repository, and you will not see those tests.
+- Treat the diagram as the behavioral source of truth and the Sonar files as non-functional quality constraints only.
 
 Create these files:
 1) completion/outcomes.initial.json
@@ -41,20 +37,6 @@ Create these files:
 Rules:
 - Allowed gate versions are v1 through v${MAX_GATE_VERSION}.
 - Every outcome id in outcomes.initial.json must appear in at least one gate outcome_ids entry in gates.v1.json.
-- outcomes.initial.json must cover, at minimum:
-  - diagram-aligned repository, package, and type structure
-  - public API and observable behavior implied by the diagram
-  - defaults, null and empty behavior, error behavior, and boundary conditions
-  - runtime or integration surfaces implied by the diagram
-  - build, test, demo, and documentation viability
-- gates.v1.json must include, at minimum:
-  - one structure or layout gate
-  - one behavioral contract gate
-  - one edge-case or error-semantics gate
-- If you suspect a diagram flaw, include at least one outcome and one gate that validate the chosen resolution.
-- Plan to deviate from a diagram detail only when there is strong evidence it is flawed, and keep any such deviation minimal and local.
-- Prefer gates that execute meaningful behavior.
-- Do not rely only on file existence, compilation, or smoke checks unless those checks are part of a stronger behavior-oriented gate set.
 - Operate only inside this run repository.
 - Use ../input/diagram.puml as read-only input.
 - If a Sonar quality rule appears to conflict with the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
