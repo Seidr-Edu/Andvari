@@ -414,6 +414,10 @@ YAML
   at_assert_dir_exists  "${_SVC_RUN_DIR}/artifacts/generated-repo"
   at_assert_dir_exists  "${_SVC_RUN_DIR}/artifacts/andvari/logs"
   at_assert_dir_exists  "${_SVC_RUN_DIR}/artifacts/andvari/report"
+  if compgen -G "${_SVC_RUN_DIR}/runner-internal/*" >/dev/null; then
+    echo "ASSERT failed: runner-internal should be cleaned after report promotion" >&2
+    return 1
+  fi
 
   # service_schema_version must be present
   local schema_ver

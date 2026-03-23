@@ -563,6 +563,12 @@ with open(out_path, 'w') as f:
 MD
 }
 
+andvari_service_cleanup_runner_internal() {
+  local runner_root="${SVC_RUN_DIR}/runner-internal/${SVC_RUN_ID}"
+  [[ -e "$runner_root" ]] || return 0
+  rm -rf "$runner_root"
+}
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 main() {
   # Handle --help; reject any other positional argument
@@ -693,6 +699,10 @@ main() {
     andvari_service_apply_failure "report-write-failed" \
       "Failed to write canonical service report"
     exit 1
+  fi
+
+  if ! andvari_service_cleanup_runner_internal; then
+    echo "[andvari-service] warning: failed to clean runner-internal/${SVC_RUN_ID}" >&2
   fi
 
   echo "[andvari-service] report: ${SVC_RUN_DIR}/outputs/run_report.json"
