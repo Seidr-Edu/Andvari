@@ -22,7 +22,12 @@ Your real goal is to recreate the original repository's externally observable fu
 - No placeholder stubs (`TODO-STUB`, `return null`, `UnsupportedOperationException`, `NotImplementedError` in production logic)
 
 ## Source of truth and scope
-- Treat `../input/diagram.puml` as the only structural and behavioral evidence about the original repository.
+- Treat `../input/diagram.puml` as the primary structural and behavioral evidence about the original repository, but not as an infallible specification.
+- The diagram may contain omissions, inconsistencies, or occasional incorrect details.
+- Follow the diagram by default.
+- Deviate from a diagram detail only when there is strong evidence it is flawed, such as an internal contradiction, an impossible or incoherent literal implementation, or a small local mistake whose correction yields a much more coherent overall design and observable behavior.
+- When you deviate from a diagram detail, make the smallest local correction necessary, preserve the surrounding design, and document the rationale in `docs/ASSUMPTIONS.md`.
+- Do not ignore diagram details based on vague intuition, generic preferences, or unsupported guesses.
 - Treat `docs/CODE_QUALITY_RULES.md` and `completion/context/sonar_rules.lock.json` as non-functional code-quality constraints only.
 - Read `docs/CODE_QUALITY_RULES.md` before implementation; consult the JSON only when exact rule metadata or parameter values are needed.
 - If a Sonar quality rule appears to conflict with behavior implied by the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
@@ -34,6 +39,7 @@ Your real goal is to recreate the original repository's externally observable fu
 - Preserve likely externally visible contracts such as defaults, null and empty behavior, exception behavior, state transitions, lifecycle ordering, protocol and serialization behavior, configuration semantics, and boundary conditions.
 - Prefer conventional library and framework behavior over toy simplifications when ambiguity remains.
 - Do not collapse behavior-rich subsystems into thin demo-only implementations.
+- If a diagram detail appears flawed, prefer a minimal coherence-restoring correction over a broad redesign.
 - If you simplify internals, keep the public behavior compatible and document the limitation in `docs/ASSUMPTIONS.md`.
 - Do not add production shims whose main purpose is to satisfy local gates while hiding missing behavior.
 

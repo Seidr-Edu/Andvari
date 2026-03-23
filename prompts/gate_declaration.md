@@ -15,7 +15,9 @@ Goal for this phase:
 Before you start:
 - Read `docs/CODE_QUALITY_RULES.md`.
 - Consult `completion/context/sonar_rules.lock.json` only when you need exact rule metadata or parameter values.
-- Treat the diagram as the behavioral source of truth and the Sonar files as non-functional quality constraints only.
+- Treat the diagram as the primary behavioral evidence and the Sonar files as non-functional quality constraints only.
+- Assume most diagram details are useful, but some may be omitted, inconsistent, or incorrect.
+- Follow the diagram by default.
 - Remember that this repository will later be evaluated using adapted tests derived from the original repository, and you will not see those tests.
 
 Create these files:
@@ -49,6 +51,8 @@ Rules:
   - one structure or layout gate
   - one behavioral contract gate
   - one edge-case or error-semantics gate
+- If you suspect a diagram flaw, include at least one outcome and one gate that validate the chosen resolution.
+- Plan to deviate from a diagram detail only when there is strong evidence it is flawed, and keep any such deviation minimal and local.
 - Prefer gates that execute meaningful behavior.
 - Do not rely only on file existence, compilation, or smoke checks unless those checks are part of a stronger behavior-oriented gate set.
 - Operate only inside this run repository.
