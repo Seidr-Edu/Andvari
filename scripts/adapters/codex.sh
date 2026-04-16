@@ -16,6 +16,16 @@ append_adapter_event() {
     "$phase" "$iteration" "$run_time" >> "$events_log"
 }
 
+append_adapter_runtime_event() {
+  local events_log="$1"
+  local event="$2"
+  local run_time
+  run_time="$(timestamp_utc_adapter)"
+
+  printf '{"type":"andvari.adapter","adapter":"codex","phase":"provider-runtime","iteration":"-","event":"%s","time":"%s"}\n' \
+    "$event" "$run_time" >> "$events_log"
+}
+
 # _codex_prompts_dir - returns the absolute path to the prompts directory.
 _codex_prompts_dir() {
   echo "${ROOT_DIR}/prompts"
@@ -109,6 +119,64 @@ PREREQ_EOF
   done
 }
 
+_codex_completion_grace_sec() {
+  local raw="${ANDVARI_TEST_CODEX_COMPLETION_GRACE_SEC:-30}"
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$raw"
+  else
+    printf '30'
+  fi
+}
+
+_codex_process_alive() {
+  local pid="$1"
+  kill -0 "$pid" 2>/dev/null
+}
+
+_codex_signal_process_group() {
+  local signal="$1"
+  local pid="$2"
+
+  kill -s "$signal" -- "-${pid}" 2>/dev/null || kill -s "$signal" "$pid" 2>/dev/null || true
+}
+
+_codex_exec_in_process_group() {
+  if command -v setsid >/dev/null 2>&1; then
+    exec setsid "$@"
+  fi
+
+  exec python3 -c '
+import os, sys
+argv = sys.argv[1:]
+os.setsid()
+os.execvp(argv[0], argv)
+' "$@"
+}
+
+_codex_flush_file_delta() {
+  local source_path="$1"
+  local target_path="$2"
+  local previous_size="${3:-0}"
+  local current_size="0"
+
+  if [[ -f "$source_path" ]]; then
+    current_size="$(wc -c < "$source_path" | tr -d '[:space:]')"
+  fi
+
+  if (( current_size > previous_size )); then
+    dd if="$source_path" bs=1 skip="$previous_size" count="$((current_size - previous_size))" status=none \
+      >> "$target_path" 2>/dev/null || true
+  fi
+
+  printf '%s' "$current_size"
+}
+
+_codex_terminal_marker_seen() {
+  local source_path="$1"
+  [[ -f "$source_path" ]] || return 1
+  grep -E -q 'task_complete|turn\.completed' "$source_path"
+}
+
 run_codex_prompt() {
   local new_repo_dir="$1"
   local input_diagram_path="$2"
@@ -121,6 +189,21 @@ run_codex_prompt() {
 
   local input_dir
   input_dir="$(cd "$(dirname "$input_diagram_path")" && pwd)"
+  local grace_sec
+  grace_sec="$(_codex_completion_grace_sec)"
+
+  local stdout_spool stderr_spool
+  stdout_spool="$(mktemp)"
+  stderr_spool="$(mktemp)"
+
+  local stdout_size="0"
+  local stderr_size="0"
+  local completion_seen="false"
+  local completion_seen_at="0"
+  local recovered_hang="false"
+  local status="0"
+
+  rm -f "$output_last_message"
 
   set +e
   (
@@ -143,10 +226,52 @@ run_codex_prompt() {
       --output-last-message "$output_last_message"
       -
     )
-    "${cmd[@]}" < "$prompt_file"
-  ) >> "$events_log" 2>> "$stderr_log"
-  local status=$?
+    _codex_exec_in_process_group "${cmd[@]}" < "$prompt_file"
+  ) > "$stdout_spool" 2> "$stderr_spool" &
+  local cmd_pid=$!
+
+  while _codex_process_alive "$cmd_pid"; do
+    stdout_size="$(_codex_flush_file_delta "$stdout_spool" "$events_log" "$stdout_size")"
+    stderr_size="$(_codex_flush_file_delta "$stderr_spool" "$stderr_log" "$stderr_size")"
+
+    if [[ "$completion_seen" != "true" ]] && _codex_terminal_marker_seen "$stdout_spool"; then
+      completion_seen="true"
+    fi
+
+    if [[ "$completion_seen" == "true" && -e "$output_last_message" && "$completion_seen_at" == "0" ]]; then
+      completion_seen_at="$(date +%s)"
+    fi
+
+    if [[ "$completion_seen_at" != "0" ]]; then
+      local now
+      now="$(date +%s)"
+      if (( now - completion_seen_at >= grace_sec )); then
+        append_adapter_runtime_event "$events_log" "post-completion-hang-recovered"
+        _codex_signal_process_group TERM "$cmd_pid"
+        sleep 2
+        if _codex_process_alive "$cmd_pid"; then
+          _codex_signal_process_group KILL "$cmd_pid"
+        fi
+        recovered_hang="true"
+        break
+      fi
+    fi
+
+    sleep 1
+  done
+
+  wait "$cmd_pid" 2>/dev/null
+  status=$?
   set -e
+
+  stdout_size="$(_codex_flush_file_delta "$stdout_spool" "$events_log" "$stdout_size")"
+  stderr_size="$(_codex_flush_file_delta "$stderr_spool" "$stderr_log" "$stderr_size")"
+
+  rm -f "$stdout_spool" "$stderr_spool"
+
+  if [[ "$recovered_hang" == "true" ]]; then
+    return 0
+  fi
 
   return "$status"
 }

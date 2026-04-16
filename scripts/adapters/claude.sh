@@ -16,6 +16,16 @@ append_claude_adapter_event() {
     "$phase" "$iteration" "$run_time" >> "$events_log"
 }
 
+append_claude_adapter_runtime_event() {
+  local events_log="$1"
+  local event="$2"
+  local run_time
+  run_time="$(timestamp_utc_adapter_claude)"
+
+  printf '{"type":"andvari.adapter","adapter":"claude","phase":"provider-runtime","iteration":"-","event":"%s","time":"%s"}\n' \
+    "$event" "$run_time" >> "$events_log"
+}
+
 # _claude_prompts_dir - returns the absolute path to the prompts directory.
 _claude_prompts_dir() {
   echo "${ROOT_DIR}/prompts"
@@ -85,6 +95,58 @@ PREREQ_EOF
   done
 }
 
+_claude_completion_grace_sec() {
+  local raw="${ANDVARI_TEST_CLAUDE_COMPLETION_GRACE_SEC:-30}"
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$raw"
+  else
+    printf '30'
+  fi
+}
+
+_claude_process_alive() {
+  local pid="$1"
+  kill -0 "$pid" 2>/dev/null
+}
+
+_claude_signal_process_group() {
+  local signal="$1"
+  local pid="$2"
+
+  kill -s "$signal" -- "-${pid}" 2>/dev/null || kill -s "$signal" "$pid" 2>/dev/null || true
+}
+
+_claude_exec_in_process_group() {
+  if command -v setsid >/dev/null 2>&1; then
+    exec setsid "$@"
+  fi
+
+  exec python3 -c '
+import os, sys
+argv = sys.argv[1:]
+os.setsid()
+os.execvp(argv[0], argv)
+' "$@"
+}
+
+_claude_flush_file_delta() {
+  local source_path="$1"
+  local target_path="$2"
+  local previous_size="${3:-0}"
+  local current_size="0"
+
+  if [[ -f "$source_path" ]]; then
+    current_size="$(wc -c < "$source_path" | tr -d '[:space:]')"
+  fi
+
+  if (( current_size > previous_size )); then
+    dd if="$source_path" bs=1 skip="$previous_size" count="$((current_size - previous_size))" status=none \
+      >> "$target_path" 2>/dev/null || true
+  fi
+
+  printf '%s' "$current_size"
+}
+
 run_claude_prompt() {
   local new_repo_dir="$1"
   local prompt_file="$2"
@@ -99,20 +161,70 @@ run_claude_prompt() {
     :
   fi
 
-  local response_file
-  response_file="$(mktemp)"
+  local grace_sec
+  grace_sec="$(_claude_completion_grace_sec)"
+
+  local stdout_spool stderr_spool
+  stdout_spool="$(mktemp)"
+  stderr_spool="$(mktemp)"
+
+  local stdout_size="0"
+  local stderr_size="0"
+  local last_output_change_at="0"
+  local recovered_hang="false"
+  local status="0"
+
+  rm -f "$output_last_message"
 
   set +e
   (
     cd "$new_repo_dir"
-    claude --dangerously-skip-permissions --print < "$prompt_file"
-  ) > "$response_file" 2>> "$stderr_log"
-  local status=$?
+    # Claude's --print mode is expected to produce its answer at the end. If
+    # stdout has been stable for the grace window and the CLI is still alive,
+    # treat that as a post-completion hang and reap the provider process group.
+    _claude_exec_in_process_group claude --dangerously-skip-permissions --print < "$prompt_file"
+  ) > "$stdout_spool" 2> "$stderr_spool" &
+  local cmd_pid=$!
+
+  while _claude_process_alive "$cmd_pid"; do
+    local previous_stdout_size="$stdout_size"
+    stdout_size="$(_claude_flush_file_delta "$stdout_spool" "$output_last_message" "$stdout_size")"
+    stderr_size="$(_claude_flush_file_delta "$stderr_spool" "$stderr_log" "$stderr_size")"
+
+    if (( stdout_size > previous_stdout_size )); then
+      last_output_change_at="$(date +%s)"
+    fi
+
+    if [[ "$last_output_change_at" != "0" ]]; then
+      local now
+      now="$(date +%s)"
+      if (( now - last_output_change_at >= grace_sec )); then
+        append_claude_adapter_runtime_event "$events_log" "post-completion-hang-recovered"
+        _claude_signal_process_group TERM "$cmd_pid"
+        sleep 2
+        if _claude_process_alive "$cmd_pid"; then
+          _claude_signal_process_group KILL "$cmd_pid"
+        fi
+        recovered_hang="true"
+        break
+      fi
+    fi
+
+    sleep 1
+  done
+
+  wait "$cmd_pid" 2>/dev/null
+  status=$?
   set -e
 
-  # Keep events log as strict JSONL; raw model text is written separately.
-  cp "$response_file" "$output_last_message"
-  rm -f "$response_file"
+  stdout_size="$(_claude_flush_file_delta "$stdout_spool" "$output_last_message" "$stdout_size")"
+  stderr_size="$(_claude_flush_file_delta "$stderr_spool" "$stderr_log" "$stderr_size")"
+
+  rm -f "$stdout_spool" "$stderr_spool"
+
+  if [[ "$recovered_hang" == "true" ]]; then
+    return 0
+  fi
 
   return "$status"
 }
