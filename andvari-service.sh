@@ -473,6 +473,7 @@ andvari_service_terminal_marker_seen() {
   grep -E -q 'task_complete|turn\.completed' "$events_log"
 }
 
+# shellcheck disable=SC2329
 andvari_service_cleanup_active_runner() {
   local pid="${SVC_ACTIVE_RUNNER_PID:-}"
   [[ -n "$pid" ]] || return 0
@@ -489,6 +490,7 @@ andvari_service_cleanup_active_runner() {
   SVC_ACTIVE_RUNNER_PID=""
 }
 
+# shellcheck disable=SC2329
 andvari_service_handle_signal() {
   local signal_name="${1:-TERM}"
   echo "[andvari-service] interrupted: ${signal_name}" >&2
@@ -504,6 +506,7 @@ andvari_service_wait_for_runner() {
   started_epoch="$(date +%s)"
 
   set +e
+  # shellcheck disable=SC2016
   andvari_service_exec_in_process_group \
     bash -c '
 ANDVARI_RUNS_DIR="$1" exec bash "$2" \

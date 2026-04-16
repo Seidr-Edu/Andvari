@@ -102,6 +102,7 @@ case_claude_adapter_complete_then_hang_recovers() {
   tmp="$(at_mktemp_dir)"
   setup_fake_claude "$tmp"
 
+  # shellcheck disable=SC2034
   ROOT_DIR="$TOOL_ROOT"
 
   local repo_dir="${tmp}/repo"
