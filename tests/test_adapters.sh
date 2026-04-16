@@ -26,6 +26,9 @@ fi
 
 if [[ "${1:-}" == "--dangerously-skip-permissions" && "${2:-}" == "--print" ]]; then
   cat >/dev/null
+  if [[ -n "${ANDVARI_TEST_CLAUDE_PID_FILE:-}" ]]; then
+    printf '%s\n' "$$" > "${ANDVARI_TEST_CLAUDE_PID_FILE}"
+  fi
   case "${ANDVARI_TEST_CLAUDE_MODE:-success}" in
     success)
       printf 'fake claude response\n'
@@ -56,6 +59,31 @@ CLAUDE
   export PATH="${fake_bin}:$PATH"
 }
 
+assert_pid_file_reaped() {
+  local pid_file="$1"
+  local msg="${2:-expected process to be reaped}"
+  local pid=""
+  local remaining_checks=5
+
+  at_assert_file_exists "$pid_file" "pid file must exist before checking process cleanup"
+  pid="$(tr -d '[:space:]' < "$pid_file")"
+  [[ "$pid" =~ ^[0-9]+$ ]] || {
+    printf 'ASSERT failed: pid file did not contain a numeric pid\nfile: %s\nvalue: %s\n' "$pid_file" "$pid" >&2
+    return 1
+  }
+
+  while (( remaining_checks > 0 )); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    remaining_checks=$((remaining_checks - 1))
+    sleep 1
+  done
+
+  printf 'ASSERT failed: %s\npid: %s\n' "$msg" "$pid" >&2
+  return 1
+}
+
 case_claude_adapter_happy_path_writes_output_last_message() {
   local tmp
   tmp="$(at_mktemp_dir)"
@@ -67,6 +95,7 @@ case_claude_adapter_happy_path_writes_output_last_message() {
   local events_log="${tmp}/adapter_events.jsonl"
   local stderr_log="${tmp}/adapter_stderr.log"
   local output_last_message="${tmp}/last_message.txt"
+  local pid_file="${tmp}/claude.pid"
   mkdir -p "$repo_dir"
 
   adapter_check_prereqs "claude"
@@ -109,6 +138,7 @@ case_claude_adapter_complete_then_hang_recovers() {
   local events_log="${tmp}/adapter_events.jsonl"
   local stderr_log="${tmp}/adapter_stderr.log"
   local output_last_message="${tmp}/last_message.txt"
+  local pid_file="${tmp}/claude.pid"
   mkdir -p "$repo_dir"
 
   adapter_check_prereqs "claude"
@@ -117,6 +147,7 @@ case_claude_adapter_complete_then_hang_recovers() {
   set +e
   ANDVARI_TEST_CLAUDE_MODE="complete-then-hang" \
   ANDVARI_TEST_CLAUDE_COMPLETION_GRACE_SEC="1" \
+  ANDVARI_TEST_CLAUDE_PID_FILE="$pid_file" \
     adapter_run_initial_reconstruction \
       "claude" \
       "$repo_dir" \
@@ -137,6 +168,7 @@ case_claude_adapter_complete_then_hang_recovers() {
   events_text="$(cat "$events_log")"
   at_assert_contains "$events_text" "post-completion-hang-recovered" \
     "claude adapter should log its hang recovery event"
+  assert_pid_file_reaped "$pid_file" "claude adapter should reap the recovered provider process"
 }
 
 echo "=== test_adapters.sh ==="

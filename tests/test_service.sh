@@ -53,6 +53,9 @@ case "${1:-}" in
         shift
       fi
     done
+    if [[ -n "${ANDVARI_TEST_CODEX_PID_FILE:-}" ]]; then
+      printf '%s\n' "$$" > "${ANDVARI_TEST_CODEX_PID_FILE}"
+    fi
     case "${ANDVARI_TEST_CODEX_MODE:-success}" in
       success)
         if [[ -n "$output_last_message" ]]; then
@@ -124,6 +127,31 @@ _run_service_in_tmproot() {
 
   _SVC_EXIT=$svc_exit
   _SVC_RUN_DIR="$run_dir"
+}
+
+_assert_pid_file_reaped() {
+  local pid_file="$1"
+  local msg="${2:-expected process to be reaped}"
+  local pid=""
+  local remaining_checks=5
+
+  at_assert_file_exists "$pid_file" "pid file must exist before checking process cleanup"
+  pid="$(tr -d '[:space:]' < "$pid_file")"
+  [[ "$pid" =~ ^[0-9]+$ ]] || {
+    printf 'ASSERT failed: pid file did not contain a numeric pid\nfile: %s\nvalue: %s\n' "$pid_file" "$pid" >&2
+    return 1
+  }
+
+  while (( remaining_checks > 0 )); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    remaining_checks=$((remaining_checks - 1))
+    sleep 1
+  done
+
+  printf 'ASSERT failed: %s\npid: %s\n' "$msg" "$pid" >&2
+  return 1
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -480,6 +508,7 @@ YAML
 
   local tmp; tmp="$(at_mktemp_dir)"
   local manifest="${tmp}/manifest.yaml"
+  local pid_file="${tmp}/codex.pid"
   cat > "$manifest" <<'YAML'
 version: 1
 adapter: codex
@@ -490,6 +519,7 @@ YAML
 
   ANDVARI_TEST_CODEX_MODE="complete-then-hang" \
   ANDVARI_TEST_CODEX_COMPLETION_GRACE_SEC="1" \
+  ANDVARI_TEST_CODEX_PID_FILE="$pid_file" \
     _run_service_in_tmproot "$tmp" "$manifest" "yes"
 
   at_assert_eq 0 "$_SVC_EXIT" "service should exit 0 after recovering a post-completion provider hang"
@@ -509,6 +539,7 @@ YAML
   events_contents="$(cat "$events_log")"
   at_assert_contains "$events_contents" "post-completion-hang-recovered" \
     "adapter events must record the post-completion recovery"
+  _assert_pid_file_reaped "$pid_file" "recovered provider process should be reaped"
 
   if compgen -G "${_SVC_RUN_DIR}/runner-internal/*" >/dev/null; then
     echo "ASSERT failed: runner-internal should be cleaned after recovery" >&2
@@ -519,6 +550,7 @@ YAML
 case_hang_before_complete_emits_runner_timeout_report() {
   local tmp; tmp="$(at_mktemp_dir)"
   local manifest="${tmp}/manifest.yaml"
+  local pid_file="${tmp}/codex.pid"
   cat > "$manifest" <<'YAML'
 version: 1
 adapter: codex
@@ -528,6 +560,7 @@ diagram_relpath: diagram.puml
 YAML
 
   ANDVARI_TEST_CODEX_MODE="hang-before-complete" \
+  ANDVARI_TEST_CODEX_PID_FILE="$pid_file" \
   ANDVARI_TEST_RUNNER_TIMEOUT_SEC="2" \
     _run_service_in_tmproot "$tmp" "$manifest" "yes"
 
@@ -545,6 +578,7 @@ YAML
   at_assert_eq "runner-timeout" "$reason" "runner timeout should set the canonical reason"
   at_assert_contains "$status_detail" "terminal provider marker observed: false" \
     "runner timeout detail should record whether completion markers were seen"
+  _assert_pid_file_reaped "$pid_file" "runner timeout cleanup should reap the provider process"
 
   if compgen -G "${_SVC_RUN_DIR}/runner-internal/*" >/dev/null; then
     echo "ASSERT failed: runner-internal should be cleaned after timeout report promotion" >&2

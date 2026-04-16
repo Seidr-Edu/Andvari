@@ -140,6 +140,21 @@ _codex_signal_process_group() {
   kill -s "$signal" -- "-${pid}" 2>/dev/null || kill -s "$signal" "$pid" 2>/dev/null || true
 }
 
+_codex_record_active_provider_process() {
+  local pid="$1"
+  local pid_file="${ANDVARI_PROVIDER_PROCESS_FILE:-}"
+
+  [[ -n "$pid_file" ]] || return 0
+  mkdir -p "$(dirname "$pid_file")"
+  printf '%s\n' "$pid" > "$pid_file"
+}
+
+_codex_clear_active_provider_process() {
+  local pid_file="${ANDVARI_PROVIDER_PROCESS_FILE:-}"
+  [[ -n "$pid_file" ]] || return 0
+  rm -f "$pid_file"
+}
+
 _codex_exec_in_process_group() {
   if command -v setsid >/dev/null 2>&1; then
     exec setsid "$@"
@@ -157,18 +172,33 @@ _codex_flush_file_delta() {
   local source_path="$1"
   local target_path="$2"
   local previous_size="${3:-0}"
-  local current_size="0"
 
-  if [[ -f "$source_path" ]]; then
-    current_size="$(wc -c < "$source_path" | tr -d '[:space:]')"
-  fi
+  python3 - "$source_path" "$target_path" "$previous_size" <<'PY'
+import os
+import sys
 
-  if (( current_size > previous_size )); then
-    dd if="$source_path" bs=1 skip="$previous_size" count="$((current_size - previous_size))" status=none \
-      >> "$target_path" 2>/dev/null || true
-  fi
+source_path, target_path, previous_raw = sys.argv[1:4]
 
-  printf '%s' "$current_size"
+try:
+    previous_size = int(previous_raw)
+except ValueError:
+    previous_size = 0
+
+current_size = os.path.getsize(source_path) if os.path.exists(source_path) else 0
+
+if current_size > previous_size:
+    with open(source_path, 'rb') as source_file, open(target_path, 'ab') as target_file:
+        source_file.seek(previous_size)
+        remaining = current_size - previous_size
+        while remaining > 0:
+            chunk = source_file.read(min(65536, remaining))
+            if not chunk:
+                break
+            target_file.write(chunk)
+            remaining -= len(chunk)
+
+print(current_size)
+PY
 }
 
 _codex_terminal_marker_seen() {
@@ -229,6 +259,7 @@ run_codex_prompt() {
     _codex_exec_in_process_group "${cmd[@]}" < "$prompt_file"
   ) > "$stdout_spool" 2> "$stderr_spool" &
   local cmd_pid=$!
+  _codex_record_active_provider_process "$cmd_pid"
 
   while _codex_process_alive "$cmd_pid"; do
     stdout_size="$(_codex_flush_file_delta "$stdout_spool" "$events_log" "$stdout_size")"
@@ -267,6 +298,7 @@ run_codex_prompt() {
   stdout_size="$(_codex_flush_file_delta "$stdout_spool" "$events_log" "$stdout_size")"
   stderr_size="$(_codex_flush_file_delta "$stderr_spool" "$stderr_log" "$stderr_size")"
 
+  _codex_clear_active_provider_process
   rm -f "$stdout_spool" "$stderr_spool"
 
   if [[ "$recovered_hang" == "true" ]]; then

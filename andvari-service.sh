@@ -454,6 +454,37 @@ andvari_service_signal_process_group() {
   kill -s "$signal" -- "-${pid}" 2>/dev/null || kill -s "$signal" "$pid" 2>/dev/null || true
 }
 
+andvari_service_active_provider_process_file() {
+  printf '%s' "${SVC_RUN_DIR}/service-runtime/${SVC_RUN_ID}.active-provider.pid"
+}
+
+andvari_service_signal_active_provider_process() {
+  local signal="$1"
+  local pid_file
+  local provider_pid=""
+
+  pid_file="$(andvari_service_active_provider_process_file)"
+  [[ -f "$pid_file" ]] || return 0
+
+  provider_pid="$(tr -d '[:space:]' < "$pid_file" 2>/dev/null || true)"
+  [[ "$provider_pid" =~ ^[0-9]+$ ]] || return 0
+
+  andvari_service_signal_process_group "$signal" "$provider_pid"
+  kill -s "$signal" "$provider_pid" 2>/dev/null || true
+}
+
+andvari_service_terminate_process_tree() {
+  local pid="$1"
+
+  andvari_service_signal_active_provider_process TERM
+  andvari_service_signal_process_group TERM "$pid"
+  sleep 2
+  andvari_service_signal_active_provider_process KILL
+  if andvari_service_process_alive "$pid"; then
+    andvari_service_signal_process_group KILL "$pid"
+  fi
+}
+
 andvari_service_exec_in_process_group() {
   if command -v setsid >/dev/null 2>&1; then
     exec setsid "$@"
@@ -481,11 +512,7 @@ andvari_service_cleanup_active_runner() {
   [[ -n "$pid" ]] || return 0
 
   if andvari_service_process_alive "$pid"; then
-    andvari_service_signal_process_group TERM "$pid"
-    sleep 2
-    if andvari_service_process_alive "$pid"; then
-      andvari_service_signal_process_group KILL "$pid"
-    fi
+    andvari_service_terminate_process_tree "$pid"
     wait "$pid" 2>/dev/null || true
   fi
 
@@ -505,13 +532,17 @@ andvari_service_handle_signal() {
 andvari_service_wait_for_runner() {
   local diagram_full_path="$1"
   local timeout_sec
+  local provider_process_file
   timeout_sec="$(andvari_service_runner_timeout_sec)"
   local started_epoch
   started_epoch="$(date +%s)"
+  provider_process_file="$(andvari_service_active_provider_process_file)"
+  mkdir -p "$(dirname "$provider_process_file")"
 
   set +e
   # shellcheck disable=SC2016
   andvari_service_exec_in_process_group \
+    env "ANDVARI_PROVIDER_PROCESS_FILE=${provider_process_file}" \
     bash -c '
 ANDVARI_RUNS_DIR="$1" exec bash "$2" \
   --diagram "$3" \
@@ -543,11 +574,7 @@ ANDVARI_RUNS_DIR="$1" exec bash "$2" \
       fi
       SVC_RUNNER_TIMED_OUT="true"
       SVC_RUNNER_TIMEOUT_DETAIL="Runner exceeded internal timeout of ${timeout_sec}s before returning; terminal provider marker observed: ${marker_seen}"
-      andvari_service_signal_process_group TERM "$SVC_ACTIVE_RUNNER_PID"
-      sleep 2
-      if andvari_service_process_alive "$SVC_ACTIVE_RUNNER_PID"; then
-        andvari_service_signal_process_group KILL "$SVC_ACTIVE_RUNNER_PID"
-      fi
+      andvari_service_terminate_process_tree "$SVC_ACTIVE_RUNNER_PID"
       break
     fi
     sleep 1
