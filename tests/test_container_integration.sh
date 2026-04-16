@@ -36,7 +36,7 @@ docker build -t andvari:local "$ROOT_DIR" >/dev/null
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 # Create a minimal fake codex binary that satisfies codex_check_prereqs and
-# lets the runner complete (gate will fail, but the runner still writes reports).
+# supports explicit hang modes for wrapper recovery tests.
 _write_fake_codex_bin() {
   local bin_dir="$1"
   mkdir -p "$bin_dir"
@@ -48,17 +48,36 @@ case "${1:-}" in
     exit 0
     ;;
   exec)
-    # Write the --output-last-message file if requested, then exit 0
     shift
+    output_last_message=""
     while [[ $# -gt 0 ]]; do
       if [[ "$1" == "--output-last-message" && $# -gt 1 ]]; then
-        touch "$2" 2>/dev/null || true
+        output_last_message="$2"
         shift 2
       else
         shift
       fi
     done
-    exit 0
+    case "${ANDVARI_TEST_CODEX_MODE:-success}" in
+      success)
+        if [[ -n "$output_last_message" ]]; then
+          touch "$output_last_message" 2>/dev/null || true
+        fi
+        exit 0
+        ;;
+      complete-then-hang)
+        if [[ -n "$output_last_message" ]]; then
+          touch "$output_last_message" 2>/dev/null || true
+        fi
+        printf '{"type":"task_complete"}\n'
+        while true; do
+          sleep 60
+        done
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
     ;;
   *)
     exit 0
@@ -147,6 +166,67 @@ YAML
     "runner_invoked must be true in the report"
 }
 
+case_container_recovers_complete_then_hang() {
+  local tmp; tmp="$(at_mktemp_dir)"
+
+  local input_model_dir="${tmp}/input_model"
+  local config_dir="${tmp}/config"
+  local run_dir="${tmp}/run"
+  local provider_bin_dir="${tmp}/provider_bin"
+  local provider_seed_dir="${tmp}/provider_seed"
+
+  mkdir -p "$input_model_dir" "$config_dir" "$run_dir" \
+           "${provider_seed_dir}/sessions"
+  chmod 0777 "$run_dir"
+  _write_fake_codex_bin "$provider_bin_dir"
+
+  cp "${ROOT_DIR}/examples/diagram.puml" "${input_model_dir}/diagram.puml"
+
+  cat > "${config_dir}/manifest.yaml" <<'YAML'
+version: 1
+adapter: codex
+gating_mode: fixed
+max_iter: 0
+diagram_relpath: diagram.puml
+YAML
+
+  chmod -R a+rX "$input_model_dir" "$config_dir" "$provider_bin_dir" "$provider_seed_dir"
+
+  local container_exit=0
+  docker run --rm \
+    -e ANDVARI_MANIFEST=/run/config/manifest.yaml \
+    -e CODEX_HOME=/run/provider-state/codex-home \
+    -e PATH="/opt/provider/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    -e ANDVARI_TEST_CODEX_MODE=complete-then-hang \
+    -e ANDVARI_TEST_CODEX_COMPLETION_GRACE_SEC=1 \
+    -v "${input_model_dir}:/input/model:ro" \
+    -v "${config_dir}:/run/config:ro" \
+    -v "${run_dir}:/run" \
+    -v "${provider_bin_dir}:/opt/provider/bin:ro" \
+    -v "${provider_seed_dir}:/opt/provider-seed/codex-home:ro" \
+    andvari:local \
+    || container_exit=$?
+
+  at_assert_eq 0 "$container_exit" \
+    "container should exit 0 after recovering a post-completion provider hang"
+  at_assert_file_exists "${run_dir}/outputs/run_report.json" \
+    "recovered hang must still write /run/outputs/run_report.json"
+  at_assert_file_exists "${run_dir}/outputs/summary.md" \
+    "recovered hang must still write /run/outputs/summary.md"
+
+  local runner_invoked events_log events_contents
+  runner_invoked="$(python3 -c "import json; d=json.load(open('${run_dir}/outputs/run_report.json')); print(str(d.get('runner_invoked',False)).lower())")"
+  at_assert_eq "true" "$runner_invoked" \
+    "runner_invoked must stay true after hang recovery"
+
+  events_log="${run_dir}/artifacts/andvari/logs/adapter_events.jsonl"
+  at_assert_file_exists "$events_log" \
+    "recovered hang must promote adapter events to the canonical logs directory"
+  events_contents="$(cat "$events_log")"
+  at_assert_contains "$events_contents" "post-completion-hang-recovered" \
+    "adapter events must record the container recovery path"
+}
+
 # ── Case: --help exits 0 ──────────────────────────────────────────────────────
 case_help_flag_exits_0() {
   local help_exit=0
@@ -219,5 +299,6 @@ at_run_case "help_flag_exits_0"                 case_help_flag_exits_0
 at_run_case "missing_manifest_emits_report"     case_missing_manifest_emits_report
 at_run_case "unsupported_adapter_container"     case_unsupported_adapter_container
 at_run_case "container_run_emits_outputs"       case_container_run_emits_outputs
+at_run_case "container_recovers_complete_then_hang" case_container_recovers_complete_then_hang
 
 at_finish_suite

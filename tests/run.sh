@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 bash "${SCRIPT_DIR}/test_smoke.sh"
+bash "${SCRIPT_DIR}/test_adapters.sh"
 bash "${SCRIPT_DIR}/test_service.sh"
 
 # Container integration tests require Docker.

@@ -46,6 +46,9 @@ SVC_DIAGRAM_RELPATH="diagram.puml"
 STARTED_AT=""
 RUNNER_INVOKED="false"
 RUNNER_EXIT_CODE="1"
+SVC_ACTIVE_RUNNER_PID=""
+SVC_RUNNER_TIMED_OUT="false"
+SVC_RUNNER_TIMEOUT_DETAIL=""
 
 # ── Usage ─────────────────────────────────────────────────────────────────────
 _svc_usage() {
@@ -430,6 +433,165 @@ andvari_service_bootstrap_provider() {
   fi
 }
 
+andvari_service_runner_timeout_sec() {
+  local raw="${ANDVARI_TEST_RUNNER_TIMEOUT_SEC:-7200}"
+  if [[ "$raw" =~ ^[0-9]+$ ]]; then
+    printf '%s' "$raw"
+  else
+    printf '7200'
+  fi
+}
+
+andvari_service_process_alive() {
+  local pid="$1"
+  kill -0 "$pid" 2>/dev/null
+}
+
+andvari_service_signal_process_group() {
+  local signal="$1"
+  local pid="$2"
+
+  kill -s "$signal" -- "-${pid}" 2>/dev/null || kill -s "$signal" "$pid" 2>/dev/null || true
+}
+
+andvari_service_active_provider_process_file() {
+  printf '%s' "${SVC_RUN_DIR}/service-runtime/${SVC_RUN_ID}.active-provider.pid"
+}
+
+andvari_service_signal_active_provider_process() {
+  local signal="$1"
+  local pid_file
+  local provider_pid=""
+
+  pid_file="$(andvari_service_active_provider_process_file)"
+  [[ -f "$pid_file" ]] || return 0
+
+  provider_pid="$(tr -d '[:space:]' < "$pid_file" 2>/dev/null || true)"
+  [[ "$provider_pid" =~ ^[0-9]+$ ]] || return 0
+
+  andvari_service_signal_process_group "$signal" "$provider_pid"
+  kill -s "$signal" "$provider_pid" 2>/dev/null || true
+}
+
+andvari_service_terminate_process_tree() {
+  local pid="$1"
+
+  andvari_service_signal_active_provider_process TERM
+  andvari_service_signal_process_group TERM "$pid"
+  sleep 2
+  andvari_service_signal_active_provider_process KILL
+  if andvari_service_process_alive "$pid"; then
+    andvari_service_signal_process_group KILL "$pid"
+  fi
+}
+
+andvari_service_exec_in_process_group() {
+  if command -v setsid >/dev/null 2>&1; then
+    exec setsid "$@"
+  fi
+
+  exec python3 -c '
+import os, sys
+argv = sys.argv[1:]
+os.setsid()
+os.execvp(argv[0], argv)
+' "$@"
+}
+
+andvari_service_terminal_marker_seen() {
+  local events_log="${SVC_RUN_DIR}/runner-internal/${SVC_RUN_ID}/logs/adapter_events.jsonl"
+  [[ -f "$events_log" ]] || return 1
+  grep -E -q 'task_complete|turn\.completed' "$events_log"
+}
+
+# Used indirectly via EXIT/TERM/INT traps; some ShellCheck versions
+# misclassify these helpers as unreachable.
+# shellcheck disable=SC2317,SC2329
+andvari_service_cleanup_active_runner() {
+  local pid="${SVC_ACTIVE_RUNNER_PID:-}"
+  [[ -n "$pid" ]] || return 0
+
+  if andvari_service_process_alive "$pid"; then
+    andvari_service_terminate_process_tree "$pid"
+    wait "$pid" 2>/dev/null || true
+  fi
+
+  SVC_ACTIVE_RUNNER_PID=""
+}
+
+# Used indirectly via EXIT/TERM/INT traps; some ShellCheck versions
+# misclassify these helpers as unreachable.
+# shellcheck disable=SC2317,SC2329
+andvari_service_handle_signal() {
+  local signal_name="${1:-TERM}"
+  echo "[andvari-service] interrupted: ${signal_name}" >&2
+  andvari_service_cleanup_active_runner
+  exit 1
+}
+
+andvari_service_wait_for_runner() {
+  local diagram_full_path="$1"
+  local timeout_sec
+  local provider_process_file
+  timeout_sec="$(andvari_service_runner_timeout_sec)"
+  local started_epoch
+  started_epoch="$(date +%s)"
+  provider_process_file="$(andvari_service_active_provider_process_file)"
+  mkdir -p "$(dirname "$provider_process_file")"
+
+  set +e
+  # shellcheck disable=SC2016
+  andvari_service_exec_in_process_group \
+    env "ANDVARI_PROVIDER_PROCESS_FILE=${provider_process_file}" \
+    bash -c '
+ANDVARI_RUNS_DIR="$1" exec bash "$2" \
+  --diagram "$3" \
+  --run-id "$4" \
+  --adapter "$5" \
+  --gating-mode "$6" \
+  --max-iter "$7" \
+  --max-gate-revisions "$8" \
+  --model-gate-timeout-sec "$9"
+' bash \
+      "${SVC_RUN_DIR}/runner-internal" \
+      "${ROOT_DIR}/andvari-run.sh" \
+      "$diagram_full_path" \
+      "$SVC_RUN_ID" \
+      "$SVC_ADAPTER" \
+      "$SVC_GATING_MODE" \
+      "$SVC_MAX_ITER" \
+      "$SVC_MAX_GATE_REVISIONS" \
+      "$SVC_MODEL_GATE_TIMEOUT_SEC" &
+  SVC_ACTIVE_RUNNER_PID=$!
+
+  while andvari_service_process_alive "$SVC_ACTIVE_RUNNER_PID"; do
+    local now
+    now="$(date +%s)"
+    if (( now - started_epoch >= timeout_sec )); then
+      local marker_seen="false"
+      if andvari_service_terminal_marker_seen; then
+        marker_seen="true"
+      fi
+      SVC_RUNNER_TIMED_OUT="true"
+      SVC_RUNNER_TIMEOUT_DETAIL="Runner exceeded internal timeout of ${timeout_sec}s before returning; terminal provider marker observed: ${marker_seen}"
+      andvari_service_terminate_process_tree "$SVC_ACTIVE_RUNNER_PID"
+      break
+    fi
+    sleep 1
+  done
+
+  wait "$SVC_ACTIVE_RUNNER_PID" 2>/dev/null
+  RUNNER_EXIT_CODE=$?
+  set -e
+
+  SVC_ACTIVE_RUNNER_PID=""
+  if [[ "$SVC_RUNNER_TIMED_OUT" == "true" ]]; then
+    RUNNER_EXIT_CODE=124
+  fi
+
+  return "$RUNNER_EXIT_CODE"
+}
+
 # ── Artifact promotion ────────────────────────────────────────────────────────
 # Copies runner-internal outputs into canonical service paths.
 # Uses /. pattern to copy directory contents, not the directory itself.
@@ -472,6 +634,10 @@ andvari_service_write_reports_or_fail() {
   SVC_WR_GENERATED_REPO="${SVC_RUN_DIR}/artifacts/generated-repo" \
   SVC_WR_LOGS_DIR="${SVC_RUN_DIR}/artifacts/andvari/logs" \
   SVC_WR_REPORT_DIR="${SVC_RUN_DIR}/artifacts/andvari/report" \
+  SVC_WR_STATUS_OVERRIDE="${SVC_WR_STATUS_OVERRIDE:-}" \
+  SVC_WR_FAILURE_SCOPE_OVERRIDE="${SVC_WR_FAILURE_SCOPE_OVERRIDE:-}" \
+  SVC_WR_REASON_OVERRIDE="${SVC_WR_REASON_OVERRIDE:-}" \
+  SVC_WR_STATUS_DETAIL_OVERRIDE="${SVC_WR_STATUS_DETAIL_OVERRIDE:-}" \
   python3 -c "
 import json, os
 
@@ -492,18 +658,27 @@ if os.path.isfile(runner_json_path):
         pass
 
 # Determine status
-if runner_data.get('status'):
+status_override = env('SVC_WR_STATUS_OVERRIDE')
+if status_override:
+    status = status_override
+elif runner_data.get('status'):
     status = runner_data['status']
 else:
     status = 'passed' if runner_exit_code == 0 else 'failed'
 
 # Determine failure_scope
-if runner_exit_code != 0 and runner_data:
+failure_scope_override = env('SVC_WR_FAILURE_SCOPE_OVERRIDE')
+if failure_scope_override:
+    failure_scope = failure_scope_override
+elif runner_exit_code != 0 and runner_data:
     failure_scope = 'gate'
 elif runner_exit_code != 0:
     failure_scope = 'runner'
 else:
     failure_scope = None
+
+reason_override = env('SVC_WR_REASON_OVERRIDE')
+status_detail_override = env('SVC_WR_STATUS_DETAIL_OVERRIDE')
 
 report = {
     **runner_data,
@@ -511,8 +686,8 @@ report = {
     'run_id':        runner_data.get('run_id') or env('SVC_WR_RUN_ID'),
     'status':        status,
     'failure_scope': failure_scope,
-    'reason':        runner_data.get('reason'),
-    'status_detail': runner_data.get('status_detail'),
+    'reason':        reason_override or runner_data.get('reason'),
+    'status_detail': status_detail_override or runner_data.get('status_detail'),
     'runner_invoked': runner_invoked,
     'adapter':       runner_data.get('adapter') or env('SVC_WR_ADAPTER'),
     'gating_mode':   runner_data.get('gating_mode') or env('SVC_WR_GATING_MODE'),
@@ -656,6 +831,10 @@ main() {
   # ── Bootstrap provider into writable runtime dir ─────────────────────────
   andvari_service_bootstrap_provider "$SVC_ADAPTER"
 
+  trap 'andvari_service_cleanup_active_runner' EXIT
+  trap 'andvari_service_handle_signal TERM' TERM
+  trap 'andvari_service_handle_signal INT' INT
+
   local prereq_exit=0
   adapter_check_prereqs "$SVC_ADAPTER" || prereq_exit=$?
   if [[ $prereq_exit -ne 0 ]]; then
@@ -674,27 +853,28 @@ main() {
   echo "[andvari-service] max_iter:    ${SVC_MAX_ITER}"
   echo "[andvari-service] diagram:     ${diagram_full_path}"
 
-  set +e
-  ANDVARI_RUNS_DIR="${SVC_RUN_DIR}/runner-internal" \
-    bash "${ROOT_DIR}/andvari-run.sh" \
-      --diagram                  "$diagram_full_path" \
-      --run-id                   "$SVC_RUN_ID" \
-      --adapter                  "$SVC_ADAPTER" \
-      --gating-mode              "$SVC_GATING_MODE" \
-      --max-iter                 "$SVC_MAX_ITER" \
-      --max-gate-revisions       "$SVC_MAX_GATE_REVISIONS" \
-      --model-gate-timeout-sec   "$SVC_MODEL_GATE_TIMEOUT_SEC"
-  RUNNER_EXIT_CODE=$?
-  set -e
+  andvari_service_wait_for_runner "$diagram_full_path" || true
 
-  echo "[andvari-service] runner exited: ${RUNNER_EXIT_CODE}"
+  if [[ "$SVC_RUNNER_TIMED_OUT" == "true" ]]; then
+    echo "[andvari-service] runner timed out: ${RUNNER_EXIT_CODE}"
+  else
+    echo "[andvari-service] runner exited: ${RUNNER_EXIT_CODE}"
+  fi
 
   # ── Promote artifacts into canonical service layout ───────────────────────
   andvari_service_promote_artifacts
 
   # ── Write final service report ────────────────────────────────────────────
   local report_exit=0
-  andvari_service_write_reports_or_fail || report_exit=$?
+  if [[ "$SVC_RUNNER_TIMED_OUT" == "true" ]]; then
+    SVC_WR_STATUS_OVERRIDE="error" \
+    SVC_WR_FAILURE_SCOPE_OVERRIDE="runner" \
+    SVC_WR_REASON_OVERRIDE="runner-timeout" \
+    SVC_WR_STATUS_DETAIL_OVERRIDE="$SVC_RUNNER_TIMEOUT_DETAIL" \
+      andvari_service_write_reports_or_fail || report_exit=$?
+  else
+    andvari_service_write_reports_or_fail || report_exit=$?
+  fi
   if [[ $report_exit -ne 0 ]]; then
     andvari_service_apply_failure "report-write-failed" \
       "Failed to write canonical service report"

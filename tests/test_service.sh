@@ -25,8 +25,7 @@ YAML
 }
 
 # ── Helper: create a minimal fake codex binary ───────────────────────────────
-# Handles `codex login status` and `codex exec` (writes --output-last-message
-# file if supplied, then exits 0).
+# Handles `codex login status` plus explicit test modes for `codex exec`.
 _write_fake_codex() {
   local bin_dir="$1"
   mkdir -p "$bin_dir"
@@ -45,15 +44,43 @@ case "${1:-}" in
     ;;
   exec)
     shift
+    output_last_message=""
     while [[ $# -gt 0 ]]; do
       if [[ "$1" == "--output-last-message" && $# -gt 1 ]]; then
-        touch "$2" 2>/dev/null || true
+        output_last_message="$2"
         shift 2
       else
         shift
       fi
     done
-    exit 0
+    if [[ -n "${ANDVARI_TEST_CODEX_PID_FILE:-}" ]]; then
+      printf '%s\n' "$$" > "${ANDVARI_TEST_CODEX_PID_FILE}"
+    fi
+    case "${ANDVARI_TEST_CODEX_MODE:-success}" in
+      success)
+        if [[ -n "$output_last_message" ]]; then
+          touch "$output_last_message" 2>/dev/null || true
+        fi
+        exit 0
+        ;;
+      complete-then-hang)
+        if [[ -n "$output_last_message" ]]; then
+          touch "$output_last_message" 2>/dev/null || true
+        fi
+        printf '{"type":"task_complete"}\n'
+        while true; do
+          sleep 60
+        done
+        ;;
+      hang-before-complete)
+        while true; do
+          sleep 60
+        done
+        ;;
+      *)
+        exit 2
+        ;;
+    esac
     ;;
   *)
     exit 0
@@ -100,6 +127,31 @@ _run_service_in_tmproot() {
 
   _SVC_EXIT=$svc_exit
   _SVC_RUN_DIR="$run_dir"
+}
+
+_assert_pid_file_reaped() {
+  local pid_file="$1"
+  local msg="${2:-expected process to be reaped}"
+  local pid=""
+  local remaining_checks=5
+
+  at_assert_file_exists "$pid_file" "pid file must exist before checking process cleanup"
+  pid="$(tr -d '[:space:]' < "$pid_file")"
+  [[ "$pid" =~ ^[0-9]+$ ]] || {
+    printf 'ASSERT failed: pid file did not contain a numeric pid\nfile: %s\nvalue: %s\n' "$pid_file" "$pid" >&2
+    return 1
+  }
+
+  while (( remaining_checks > 0 )); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+      return 0
+    fi
+    remaining_checks=$((remaining_checks - 1))
+    sleep 1
+  done
+
+  printf 'ASSERT failed: %s\npid: %s\n' "$msg" "$pid" >&2
+  return 1
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -438,6 +490,102 @@ YAML
   at_assert_eq "true" "$runner_invoked" "runner_invoked must be true in the report"
 }
 
+case_complete_then_hang_recovers_and_reports() {
+  local baseline_tmp; baseline_tmp="$(at_mktemp_dir)"
+  local baseline_manifest="${baseline_tmp}/manifest.yaml"
+  cat > "$baseline_manifest" <<'YAML'
+version: 1
+adapter: codex
+gating_mode: fixed
+max_iter: 0
+diagram_relpath: diagram.puml
+YAML
+
+  _run_service_in_tmproot "$baseline_tmp" "$baseline_manifest" "yes"
+
+  local baseline_status
+  baseline_status="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('status',''))")"
+
+  local tmp; tmp="$(at_mktemp_dir)"
+  local manifest="${tmp}/manifest.yaml"
+  local pid_file="${tmp}/codex.pid"
+  cat > "$manifest" <<'YAML'
+version: 1
+adapter: codex
+gating_mode: fixed
+max_iter: 0
+diagram_relpath: diagram.puml
+YAML
+
+  ANDVARI_TEST_CODEX_MODE="complete-then-hang" \
+  ANDVARI_TEST_CODEX_COMPLETION_GRACE_SEC="1" \
+  ANDVARI_TEST_CODEX_PID_FILE="$pid_file" \
+    _run_service_in_tmproot "$tmp" "$manifest" "yes"
+
+  at_assert_eq 0 "$_SVC_EXIT" "service should exit 0 after recovering a post-completion provider hang"
+  at_assert_file_exists "${_SVC_RUN_DIR}/outputs/run_report.json" "run_report.json must exist after recovery"
+
+  local status failure_scope reason events_log events_contents
+  status="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('status',''))")"
+  failure_scope="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('failure_scope') or '')")"
+  reason="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('reason') or '')")"
+
+  at_assert_eq "$baseline_status" "$status" "recovered hang should keep the normal runner-derived status"
+  at_assert_eq "gate" "$failure_scope" "recovered hang should still classify using the runner result"
+  at_assert_eq "" "$reason" "recovered hang should not be rewritten as a runner timeout"
+
+  events_log="${_SVC_RUN_DIR}/artifacts/andvari/logs/adapter_events.jsonl"
+  at_assert_file_exists "$events_log" "adapter events log must be promoted after recovery"
+  events_contents="$(cat "$events_log")"
+  at_assert_contains "$events_contents" "post-completion-hang-recovered" \
+    "adapter events must record the post-completion recovery"
+  _assert_pid_file_reaped "$pid_file" "recovered provider process should be reaped"
+
+  if compgen -G "${_SVC_RUN_DIR}/runner-internal/*" >/dev/null; then
+    echo "ASSERT failed: runner-internal should be cleaned after recovery" >&2
+    return 1
+  fi
+}
+
+case_hang_before_complete_emits_runner_timeout_report() {
+  local tmp; tmp="$(at_mktemp_dir)"
+  local manifest="${tmp}/manifest.yaml"
+  local pid_file="${tmp}/codex.pid"
+  cat > "$manifest" <<'YAML'
+version: 1
+adapter: codex
+gating_mode: fixed
+max_iter: 0
+diagram_relpath: diagram.puml
+YAML
+
+  ANDVARI_TEST_CODEX_MODE="hang-before-complete" \
+  ANDVARI_TEST_CODEX_PID_FILE="$pid_file" \
+  ANDVARI_TEST_RUNNER_TIMEOUT_SEC="2" \
+    _run_service_in_tmproot "$tmp" "$manifest" "yes"
+
+  at_assert_eq 0 "$_SVC_EXIT" "service should exit 0 after emitting a runner timeout report"
+  at_assert_file_exists "${_SVC_RUN_DIR}/outputs/run_report.json" "run_report.json must exist after runner timeout"
+
+  local status failure_scope reason status_detail
+  status="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('status',''))")"
+  failure_scope="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('failure_scope') or '')")"
+  reason="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('reason') or '')")"
+  status_detail="$(python3 -c "import json; d=json.load(open('${_SVC_RUN_DIR}/outputs/run_report.json')); print(d.get('status_detail') or '')")"
+
+  at_assert_eq "error" "$status" "runner timeout should produce an error report"
+  at_assert_eq "runner" "$failure_scope" "runner timeout should be classified to the runner scope"
+  at_assert_eq "runner-timeout" "$reason" "runner timeout should set the canonical reason"
+  at_assert_contains "$status_detail" "terminal provider marker observed: false" \
+    "runner timeout detail should record whether completion markers were seen"
+  _assert_pid_file_reaped "$pid_file" "runner timeout cleanup should reap the provider process"
+
+  if compgen -G "${_SVC_RUN_DIR}/runner-internal/*" >/dev/null; then
+    echo "ASSERT failed: runner-internal should be cleaned after timeout report promotion" >&2
+    return 1
+  fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Run all cases
 # ─────────────────────────────────────────────────────────────────────────────
@@ -455,5 +603,7 @@ at_run_case "invalid_run_id_emits_report"       case_invalid_run_id_emits_report
 at_run_case "non_writable_run_dir_exits_1"      case_non_writable_run_dir_exits_1
 at_run_case "non_writable_outputs_dir_exits_1"  case_non_writable_outputs_dir_exits_1
 at_run_case "artifact_promotion_layout"         case_artifact_promotion_layout
+at_run_case "complete_then_hang_recovers_and_reports" case_complete_then_hang_recovers_and_reports
+at_run_case "hang_before_complete_emits_runner_timeout_report" case_hang_before_complete_emits_runner_timeout_report
 
 at_finish_suite
