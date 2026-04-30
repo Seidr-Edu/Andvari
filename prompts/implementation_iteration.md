@@ -21,7 +21,7 @@ Execution loop (continue until green):
 2. Read the failure summary below.
 3. Implement or fix the repository from the diagram and declared outcomes, using the strongest coherent interpretation when a diagram detail appears flawed.
 4. Consult `completion/context/sonar_rules.lock.json` only when you need exact rule metadata or parameter values.
-5. Update completion/run_all_gates.sh and completion/proof/results.vN.json behavior as needed.
+5. Update completion/run_all_gates.sh and any gate-supporting scripts as needed.
 6. Run ./gate_hard.sh.
 7. Run ./scripts/verify_outcome_coverage.sh --max-gate-revisions ${MAX_GATE_REVISIONS} --model-gate-timeout-sec ${MODEL_GATE_TIMEOUT_SEC}
 8. If either command fails, continue fixing and rerunning until both pass.
@@ -40,5 +40,6 @@ Scope constraints:
 - Do not use possible diagram flaws as a license for broad redesigns or unsupported guesswork.
 - Preserve diagram-implied package topology and subsystem boundaries instead of collapsing behavior-rich areas into demo-oriented simplifications.
 - Do not inspect or modify any other run directories.
+- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network or proxy controls.
 
 Failure summary:

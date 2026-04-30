@@ -27,6 +27,13 @@ Reconstruct a complete, working Java repository from the provided PlantUML diagr
 - Resolve ambiguity with reasonable assumptions and record them in `docs/ASSUMPTIONS.md`.
 - Keep implementation deterministic where practical.
 
+## External retrieval and bypass policy
+- Do not attempt to retrieve the original repository's source code or any hidden information about it from the internet or other external networked sources.
+- Do not use the web, GitHub, git remotes, API calls, search tools, package-index browsing, or similar external services as a clue channel for the original repository or its source code.
+- Normal dependency resolution needed to build or test the generated repository is allowed, but it must not be used as a research channel about the original repository.
+- Do not attempt to bypass or evade proxy, network, firewall, sandbox, permission, or tool restrictions. If access is blocked or denied, continue without it.
+- Any attempt to retrieve original source code or hidden repository information from external sources, or to bypass these controls, will be reported to moderators and will fail the task.
+
 ## Stop condition
 Do not consider the task complete until `./gate_recon.sh` passes.
 If it fails, fix and rerun until green.
