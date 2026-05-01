@@ -40,6 +40,6 @@ Scope constraints:
 - Do not use possible diagram flaws as a license for broad redesigns or unsupported guesswork.
 - Preserve diagram-implied package topology and subsystem boundaries instead of collapsing behavior-rich areas into demo-oriented simplifications.
 - Do not inspect or modify any other run directories.
-- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network or proxy controls.
+- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network, egress, or firewall controls.
 
 Failure summary:

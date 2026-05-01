@@ -59,6 +59,6 @@ Rules:
 - Use ../input/diagram.puml as read-only input.
 - If a Sonar quality rule appears to conflict with the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
 - Do not inspect or modify any other run directories.
-- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network or proxy controls.
+- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network, egress, or firewall controls.
 
 Return a concise summary of the declared outcomes and gates.
