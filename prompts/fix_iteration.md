@@ -19,6 +19,6 @@ Actions:
 Constraints:
 - Treat the diagram as the behavioral source of truth and the Sonar files as non-functional quality constraints only.
 - If a Sonar quality rule appears to conflict with the diagram, preserve the diagram's behavior and satisfy the quality rule through naming, structure, safety, and maintainability choices.
-- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network or proxy controls.
+- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network, egress, or firewall controls.
 
 Gate failure summary (last ~200 lines):

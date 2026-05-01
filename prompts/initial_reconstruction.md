@@ -18,6 +18,6 @@ Scope constraints:
 - Use ../input/diagram.puml as read-only input.
 - Treat the diagram as the behavioral source of truth and the Sonar files as non-functional quality constraints only.
 - Do not inspect or modify any other run directories.
-- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network or proxy controls.
+- Do not retrieve original source code or hidden repository information from external networked sources, and do not attempt to bypass network, egress, or firewall controls.
 
 Return a concise summary including final gate result.
