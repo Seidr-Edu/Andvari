@@ -430,6 +430,16 @@ andvari_service_bootstrap_provider() {
 
     export CODEX_HOME="$runtime_dir"
     export PATH="${SVC_PROVIDER_BIN}:${PATH}"
+  elif [[ "$adapter" == "claude" ]]; then
+    local runtime_dir="${SVC_RUN_DIR}/provider-state/claude-home"
+    mkdir -p "${runtime_dir}"
+
+    if [[ -d /opt/provider-seed/claude-home ]]; then
+      cp -R /opt/provider-seed/claude-home/. "${runtime_dir}/"
+    fi
+
+    export CLAUDE_CONFIG_DIR="$runtime_dir"
+    export PATH="${SVC_PROVIDER_BIN}:${PATH}"
   fi
 }
 
@@ -796,10 +806,10 @@ main() {
     exit 0
   fi
 
-  # ── Validate adapter (phase 1: codex only) ────────────────────────────────
-  if [[ "$SVC_ADAPTER" != "codex" ]]; then
+  # ── Validate adapter ──────────────────────────────────────────────────────
+  if [[ "$SVC_ADAPTER" != "codex" && "$SVC_ADAPTER" != "claude" ]]; then
     andvari_service_apply_failure "unsupported-adapter" \
-      "Service mode only supports adapter: codex. Got: ${SVC_ADAPTER:-<empty>}"
+      "Service mode only supports adapter: codex or claude. Got: ${SVC_ADAPTER:-<empty>}"
     exit 0
   fi
 
