@@ -326,7 +326,7 @@ case_unsupported_adapter_emits_report() {
   local manifest="${tmp}/manifest.yaml"
   cat > "$manifest" <<'YAML'
 version: 1
-adapter: claude
+adapter: openai
 gating_mode: model
 YAML
 
@@ -344,13 +344,13 @@ YAML
   local reason status
   reason="$(python3 -c "import json; d=json.load(open('${run_dir}/outputs/run_report.json')); print(d.get('reason',''))")"
   status="$(python3 -c "import json; d=json.load(open('${run_dir}/outputs/run_report.json')); print(d.get('status',''))")"
-  at_assert_eq "unsupported-adapter" "$reason" "reason must be unsupported-adapter"
+  at_assert_eq "unsupported-adapter" "$reason" "openai is not a registered adapter; reason must be unsupported-adapter"
   at_assert_eq "error" "$status" "status must be error"
 }
 
 # ── 7. env override wins over manifest adapter ────────────────────────────────
-# Manifest says codex; env forces claude → service should reject as unsupported
-# but crucially used the env value, not the manifest value.
+# Manifest says codex; env forces claude → service accepts claude (it is supported)
+# and crucially uses the env value, not the manifest value.
 case_env_overrides_manifest_adapter() {
   local tmp; tmp="$(at_mktemp_dir)"
   local manifest="${tmp}/manifest.yaml"
@@ -375,7 +375,7 @@ case_env_overrides_manifest_adapter() {
 
   local reason
   reason="$(python3 -c "import json; d=json.load(open('${run_dir}/outputs/run_report.json')); print(d.get('reason',''))")"
-  at_assert_eq "unsupported-adapter" "$reason" "should reject claude as unsupported"
+  at_assert_eq "missing-diagram" "$reason" "claude is now supported; service proceeds past adapter check and fails at missing diagram"
 }
 
 # ── 8. invalid run_id emits report ────────────────────────────────────────────
