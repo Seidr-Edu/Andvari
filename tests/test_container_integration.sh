@@ -269,7 +269,7 @@ case_unsupported_adapter_container() {
 
   cat > "${config_dir}/manifest.yaml" <<'YAML'
 version: 1
-adapter: claude
+adapter: openai
 YAML
 
   chmod -R a+rX "$config_dir"

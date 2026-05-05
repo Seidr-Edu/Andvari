@@ -34,6 +34,7 @@ SVC_RUN_DIR="${ANDVARI_SERVICE_RUN_DIR:-/run}"
 SVC_INPUT_DIR="${ANDVARI_SERVICE_INPUT_DIR:-/input/model}"
 SVC_PROVIDER_BIN="${ANDVARI_SERVICE_PROVIDER_BIN:-/opt/provider/bin}"
 SVC_PROVIDER_SEED="${ANDVARI_SERVICE_PROVIDER_SEED:-/opt/provider-seed/codex-home}"
+SVC_CLAUDE_PROVIDER_SEED="${ANDVARI_SERVICE_CLAUDE_PROVIDER_SEED:-/opt/provider-seed/claude-home}"
 
 # ── Service globals (set by resolve_config; referenced by helper functions) ───
 SVC_RUN_ID=""
@@ -66,7 +67,7 @@ Override with:           ANDVARI_MANIFEST=/path/to/manifest.yaml
 Manifest schema (version 1):
   version                    Required. Must be 1.
   run_id                     Optional. Auto-generated (UTC compact ISO-8601) if absent.
-  adapter                    Required. Supported in service mode: codex.
+  adapter                    Required. Supported adapters: codex, claude.
   gating_mode                Optional. model (default) or fixed.
   max_iter                   Optional. Non-negative integer. Default: 8.
   max_gate_revisions         Optional. Non-negative integer. Default: 3.
@@ -74,20 +75,24 @@ Manifest schema (version 1):
   diagram_relpath            Optional. Path relative to /input/model. Default: diagram.puml.
 
 Environment variable overrides (take precedence over manifest fields):
-  ANDVARI_MANIFEST              Manifest file path.
-  ANDVARI_ADAPTER               Adapter backend.
-  ANDVARI_GATING_MODE           Gating strategy (model or fixed).
-  ANDVARI_MAX_ITER              Max repair iterations.
-  ANDVARI_MAX_GATE_REVISIONS    Max gate revisions (model mode only).
-  ANDVARI_MODEL_GATE_TIMEOUT_SEC  Seconds for gate replay timeout.
-  ANDVARI_DIAGRAM               diagram_relpath override.
+  ANDVARI_MANIFEST                    Manifest file path.
+  ANDVARI_ADAPTER                     Adapter backend.
+  ANDVARI_GATING_MODE                 Gating strategy (model or fixed).
+  ANDVARI_MAX_ITER                    Max repair iterations.
+  ANDVARI_MAX_GATE_REVISIONS          Max gate revisions (model mode only).
+  ANDVARI_MODEL_GATE_TIMEOUT_SEC      Seconds for gate replay timeout.
+  ANDVARI_DIAGRAM                     diagram_relpath override.
+  ANDVARI_SERVICE_CLAUDE_PROVIDER_SEED  Path to claude auth seed dir (default: /opt/provider-seed/claude-home).
 
 Runtime mounts (container):
   /input/model                          read-only   staged diagram input
   /run/config                           read-only   manifest and service config
   /run                                  read-write  all service outputs
-  /opt/provider/bin                     read-only   authenticated provider CLI
-  /opt/provider-seed/codex-home         read-only   provider auth seed (copied to writable /run/provider-state)
+  /opt/provider/bin                     read-only   provider CLI binary directory
+
+  Provider auth seed (one required, based on adapter):
+  /opt/provider-seed/codex-home         read-only   codex auth seed (copied to writable /run/provider-state)
+  /opt/provider-seed/claude-home        read-only   claude auth seed (copied to writable /run/provider-state)
 
 Canonical outputs (orchestrator consumes):
   /run/outputs/run_report.json          machine-readable service report
@@ -434,8 +439,8 @@ andvari_service_bootstrap_provider() {
     local runtime_dir="${SVC_RUN_DIR}/provider-state/claude-home"
     mkdir -p "${runtime_dir}"
 
-    if [[ -d /opt/provider-seed/claude-home ]]; then
-      cp -R /opt/provider-seed/claude-home/. "${runtime_dir}/"
+    if [[ -d "$SVC_CLAUDE_PROVIDER_SEED" ]]; then
+      cp -R "${SVC_CLAUDE_PROVIDER_SEED}/." "${runtime_dir}/"
     fi
 
     export CLAUDE_CONFIG_DIR="$runtime_dir"
@@ -511,7 +516,7 @@ os.execvp(argv[0], argv)
 andvari_service_terminal_marker_seen() {
   local events_log="${SVC_RUN_DIR}/runner-internal/${SVC_RUN_ID}/logs/adapter_events.jsonl"
   [[ -f "$events_log" ]] || return 1
-  grep -E -q 'task_complete|turn\.completed' "$events_log"
+  grep -E -q 'task_complete|turn\.completed|post-completion-hang-recovered' "$events_log"
 }
 
 # Used indirectly via EXIT/TERM/INT traps; some ShellCheck versions
