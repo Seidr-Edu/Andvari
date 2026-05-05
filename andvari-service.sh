@@ -516,7 +516,7 @@ os.execvp(argv[0], argv)
 andvari_service_terminal_marker_seen() {
   local events_log="${SVC_RUN_DIR}/runner-internal/${SVC_RUN_ID}/logs/adapter_events.jsonl"
   [[ -f "$events_log" ]] || return 1
-  grep -E -q 'task_complete|turn\.completed|post-completion-hang-recovered' "$events_log"
+  grep -E -q 'task_complete|turn\.completed|invocation-complete' "$events_log"
 }
 
 # Used indirectly via EXIT/TERM/INT traps; some ShellCheck versions

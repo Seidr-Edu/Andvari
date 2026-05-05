@@ -255,9 +255,13 @@ run_claude_prompt() {
   rm -f "$stdout_spool" "$stderr_spool"
 
   if [[ "$recovered_hang" == "true" ]]; then
+    append_claude_adapter_runtime_event "$events_log" "invocation-complete"
     return 0
   fi
 
+  if [[ "$status" -eq 0 ]]; then
+    append_claude_adapter_runtime_event "$events_log" "invocation-complete"
+  fi
   return "$status"
 }
 
